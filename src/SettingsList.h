@@ -35,10 +35,10 @@ inline std::vector<SettingInfo> getSettingsList() {
                         StrId::STR_CAT_DISPLAY),
       SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                           StrId::STR_CAT_DISPLAY),
-      SettingInfo::Enum("Color Mode", &CrossPointSettings::colorMode, {"Light", "Dark"}, "colorMode",
-                        StrId::STR_CAT_DISPLAY),
-      SettingInfo::Enum("UI Orientation", &CrossPointSettings::uiOrientation, {"Portrait", "Inverted"}, "uiOrientation",
-                        StrId::STR_CAT_DISPLAY),
+      SettingInfo::Enum(StrId::STR_COLOR_MODE, &CrossPointSettings::colorMode, {StrId::STR_LIGHT, StrId::STR_DARK},
+                        "colorMode", StrId::STR_CAT_DISPLAY),
+      SettingInfo::Enum(StrId::STR_UI_ORIENTATION, &CrossPointSettings::uiOrientation,
+                        {StrId::STR_PORTRAIT, StrId::STR_INVERTED}, "uiOrientation", StrId::STR_CAT_DISPLAY),
 
       // --- Reader ---
       SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
@@ -66,7 +66,7 @@ inline std::vector<SettingInfo> getSettingsList() {
                           StrId::STR_CAT_READER),
       SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
                           StrId::STR_CAT_READER),
-      SettingInfo::Toggle("First Line Indent", &CrossPointSettings::firstLineIndent, "firstLineIndent",
+      SettingInfo::Toggle(StrId::STR_FIRST_LINE_INDENT, &CrossPointSettings::firstLineIndent, "firstLineIndent",
                           StrId::STR_CAT_READER),
 
       // --- Controls ---

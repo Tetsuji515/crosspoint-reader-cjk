@@ -21,7 +21,10 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
   const auto sideLayout = static_cast<CrossPointSettings::SIDE_BUTTON_LAYOUT>(SETTINGS.sideButtonLayout);
   const auto& side = kSideLayouts[sideLayout];
 
-  switch (button) {
+  // Remap directional buttons based on screen orientation
+  const Button mapped = remapForOrientation(button);
+
+  switch (mapped) {
     case Button::Back:
       // Logical Back maps to user-configured front button.
       return (gpio.*fn)(SETTINGS.frontButtonBack);
@@ -106,4 +109,56 @@ int MappedInputManager::getPressedFrontButton() const {
     return HalGPIO::BTN_RIGHT;
   }
   return -1;
+}
+
+MappedInputManager::Button MappedInputManager::remapForOrientation(const Button button) const {
+  // Only remap directional buttons (Left/Right/Up/Down)
+  // Back, Confirm, Power, PageBack, PageForward are unaffected by orientation
+  if (effectiveOrientation == Orientation::Portrait) {
+    return button;
+  }
+
+  switch (effectiveOrientation) {
+    case Orientation::PortraitInverted:
+      switch (button) {
+        case Button::Left:
+          return Button::Right;
+        case Button::Right:
+          return Button::Left;
+        case Button::Up:
+          return Button::Down;
+        case Button::Down:
+          return Button::Up;
+        default:
+          return button;
+      }
+    case Orientation::LandscapeClockwise:
+      switch (button) {
+        case Button::Up:
+          return Button::Left;
+        case Button::Down:
+          return Button::Right;
+        case Button::Left:
+          return Button::Down;
+        case Button::Right:
+          return Button::Up;
+        default:
+          return button;
+      }
+    case Orientation::LandscapeCounterClockwise:
+      switch (button) {
+        case Button::Up:
+          return Button::Right;
+        case Button::Down:
+          return Button::Left;
+        case Button::Left:
+          return Button::Up;
+        case Button::Right:
+          return Button::Down;
+        default:
+          return button;
+      }
+    default:
+      return button;
+  }
 }
