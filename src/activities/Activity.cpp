@@ -20,7 +20,7 @@ void Activity::renderTaskLoop() {
 
 void Activity::onEnter() {
   xTaskCreate(&renderTaskTrampoline, name.c_str(),
-              8192,              // Stack size
+              10240,             // Stack size (increased from 8192 for CJK rendering)
               this,              // Parameters
               1,                 // Priority
               &renderTaskHandle  // Task handle

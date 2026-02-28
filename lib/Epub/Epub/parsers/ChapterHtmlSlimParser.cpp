@@ -1,5 +1,6 @@
 #include "ChapterHtmlSlimParser.h"
 
+#include <Arduino.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -18,6 +19,9 @@ constexpr int NUM_HEADER_TAGS = sizeof(HEADER_TAGS) / sizeof(HEADER_TAGS[0]);
 // Minimum file size (in bytes) to show indexing popup - smaller chapters don't benefit from it
 constexpr size_t MIN_SIZE_FOR_POPUP = 10 * 1024;  // 10KB
 constexpr size_t PARSE_BUFFER_SIZE = 1024;
+// Minimum free heap to continue parsing. Below this, stop gracefully
+// to prevent abort() from failed allocations (no C++ exceptions on ESP32).
+constexpr size_t MIN_FREE_HEAP_FOR_PARSING = 20 * 1024;  // 20KB
 
 const char* BLOCK_TAGS[] = {"p", "li", "div", "br", "blockquote"};
 constexpr int NUM_BLOCK_TAGS = sizeof(BLOCK_TAGS) / sizeof(BLOCK_TAGS[0]);
@@ -975,6 +979,17 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
               XML_ErrorString(XML_GetErrorCode(parser)));
       XML_StopParser(parser, XML_FALSE);                // Stop any pending processing
       XML_SetElementHandler(parser, nullptr, nullptr);  // Clear callbacks
+      XML_SetCharacterDataHandler(parser, nullptr);
+      XML_ParserFree(parser);
+      file.close();
+      return false;
+    }
+
+    // Periodic heap check during parsing to prevent abort() from failed allocations
+    if (!done && ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_PARSING) {
+      LOG_ERR("EHP", "Low heap during parsing (%u bytes), stopping gracefully", ESP.getFreeHeap());
+      XML_StopParser(parser, XML_FALSE);
+      XML_SetElementHandler(parser, nullptr, nullptr);
       XML_SetCharacterDataHandler(parser, nullptr);
       XML_ParserFree(parser);
       file.close();

@@ -1,5 +1,6 @@
 #include "Section.h"
 
+#include <Arduino.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -10,7 +11,11 @@
 #include "parsers/ChapterHtmlSlimParser.h"
 
 namespace {
-constexpr uint8_t SECTION_FILE_VERSION = 15;
+constexpr uint8_t SECTION_FILE_VERSION = 16;
+// Minimum free heap required before attempting to build section pages.
+// Section building involves heavy allocations (Page, TextBlock, PageLine, etc.)
+// and on ESP32 without C++ exceptions, allocation failure calls abort().
+constexpr size_t MIN_FREE_HEAP_FOR_SECTION_BUILD = 50 * 1024;  // 50KB
 constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(bool) + sizeof(uint32_t);
@@ -201,6 +206,21 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
         LOG_ERR("SCT", "Failed to load CSS from cache");
       }
     }
+  }
+
+  // Pre-check heap before heavy allocation work.
+  // On ESP32 without C++ exceptions, new/make_shared call abort() on failure.
+  const uint32_t freeHeapBeforeBuild = ESP.getFreeHeap();
+  if (freeHeapBeforeBuild < MIN_FREE_HEAP_FOR_SECTION_BUILD) {
+    LOG_ERR("SCT", "Insufficient heap for section build (%u bytes free, need %zu), aborting gracefully",
+            freeHeapBeforeBuild, MIN_FREE_HEAP_FOR_SECTION_BUILD);
+    file.close();
+    Storage.remove(filePath.c_str());
+    Storage.remove(tmpHtmlPath.c_str());
+    if (cssParser) {
+      cssParser->clear();
+    }
+    return false;
   }
 
   ChapterHtmlSlimParser visitor(
