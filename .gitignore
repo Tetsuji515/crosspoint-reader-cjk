@@ -20,3 +20,4 @@ docs/plans/
 .history/
 /.venv
 *.local*
+worktrees/
