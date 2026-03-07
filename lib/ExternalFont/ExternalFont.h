@@ -9,6 +9,7 @@ struct ExternalGlyphMetrics {
   uint8_t width = 0;
   uint8_t height = 0;
   uint8_t advanceX = 0;
+  uint16_t flags = 0;
   int16_t left = 0;
   int16_t top = 0;
 };
@@ -94,10 +95,11 @@ class ExternalFont {
    * @return true if metrics found in cache, false otherwise
    */
   bool getGlyphMetrics(uint32_t cp, uint8_t* outMinX, uint8_t* outAdvanceX);
+  bool getGlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out) const;
 
  private:
   // Font file handle (keep open to avoid repeated open/close)
-  FsFile _fontFile;
+  mutable FsFile _fontFile;
   bool _isLoaded = false;
 
   // Properties parsed from filename
@@ -109,6 +111,8 @@ class ExternalFont {
   uint16_t _bytesPerChar = 0;
   bool _isRichMetricsFormat = false;
   ExternalFontMetrics _fontMetrics;
+  uint32_t _metricsTableOffset = 0;
+  uint32_t _glyphDataOffset = 0;
 
   // LRU cache - dynamically allocated on load(), freed on unload()
   // 128 glyphs for CJK text rendering (~34KB per font when loaded).
@@ -123,9 +127,8 @@ class ExternalFont {
     uint32_t codepoint = 0xFFFFFFFF;  // Invalid marker
     uint8_t bitmap[MAX_GLYPH_BYTES];
     uint32_t lastUsed = 0;
-    bool notFound = false;  // True if glyph doesn't exist in font
-    uint8_t minX = 0;       // Cached rendering metrics
-    uint8_t advanceX = 0;   // Cached advance width
+    bool notFound = false;               // True if glyph doesn't exist in font
+    ExternalGlyphMetrics metrics = {};   // Cached rendering metrics
   };
   CacheEntry* _cache = nullptr;       // Dynamically allocated on load()
   uint32_t _accessCounter = 0;
@@ -143,6 +146,7 @@ class ExternalFont {
    * Read glyph data from SD card
    */
   bool readGlyphFromSD(uint32_t codepoint, uint8_t* buffer);
+  bool readXbf2GlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out) const;
 
   /**
    * Parse filename to get font parameters
@@ -154,7 +158,7 @@ class ExternalFont {
    * Find glyph in cache
    * @return Cache index, -1 if not found
    */
-  int findInCache(uint32_t codepoint);
+  int findInCache(uint32_t codepoint) const;
 
   /**
    * Get LRU cache slot (least recently used)

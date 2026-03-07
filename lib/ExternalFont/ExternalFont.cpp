@@ -10,7 +10,8 @@
 namespace {
 
 constexpr uint8_t XBF2_MAGIC[4] = {'X', 'B', 'F', '2'};
-constexpr size_t XBF2_HEADER_SIZE = 12;
+constexpr size_t XBF2_HEADER_SIZE = 20;
+constexpr size_t XBF2_GLYPH_METRICS_SIZE = 12;
 
 int16_t readInt16LE(const uint8_t* bytes) {
   return static_cast<int16_t>(static_cast<uint16_t>(bytes[0]) | (static_cast<uint16_t>(bytes[1]) << 8));
@@ -18,6 +19,11 @@ int16_t readInt16LE(const uint8_t* bytes) {
 
 uint16_t readUint16LE(const uint8_t* bytes) {
   return static_cast<uint16_t>(bytes[0]) | (static_cast<uint16_t>(bytes[1]) << 8);
+}
+
+uint32_t readUint32LE(const uint8_t* bytes) {
+  return static_cast<uint32_t>(bytes[0]) | (static_cast<uint32_t>(bytes[1]) << 8) |
+         (static_cast<uint32_t>(bytes[2]) << 16) | (static_cast<uint32_t>(bytes[3]) << 24);
 }
 
 }  // namespace
@@ -37,6 +43,8 @@ void ExternalFont::unload() {
   _bytesPerChar = 0;
   _isRichMetricsFormat = false;
   _fontMetrics = {};
+  _metricsTableOffset = 0;
+  _glyphDataOffset = 0;
   _accessCounter = 0;
   _lastReadOffset = 0;
   _hasLastReadOffset = false;
@@ -146,6 +154,15 @@ bool ExternalFont::load(const char* filepath) {
     _fontMetrics.ascender = readInt16LE(header + 6);
     _fontMetrics.descender = readInt16LE(header + 8);
     _fontMetrics.lineHeight = readUint16LE(header + 10);
+    _metricsTableOffset = readUint32LE(header + 12);
+    _glyphDataOffset = readUint32LE(header + 16);
+
+    if (_charWidth == 0 || _charHeight == 0 || _fontMetrics.lineHeight == 0 || _glyphDataOffset < XBF2_HEADER_SIZE ||
+        _metricsTableOffset < XBF2_HEADER_SIZE || _metricsTableOffset > _glyphDataOffset) {
+      LOG_ERR("EFT", "Invalid XBF2 header values");
+      _fontFile.close();
+      return false;
+    }
 
     if (_bytesPerChar > MAX_GLYPH_BYTES) {
       LOG_ERR("EFT", "Glyph too large: %d bytes (max %d)", _bytesPerChar, MAX_GLYPH_BYTES);
@@ -182,7 +199,7 @@ bool ExternalFont::load(const char* filepath) {
   return true;
 }
 
-int ExternalFont::findInCache(uint32_t codepoint) {
+int ExternalFont::findInCache(uint32_t codepoint) const {
   // O(1) hash table lookup with linear probing for collisions
   int hash = hashCodepoint(codepoint);
   for (int i = 0; i < CACHE_SIZE; i++) {
@@ -216,13 +233,49 @@ int ExternalFont::getLruSlot() {
   return lruIndex;
 }
 
+bool ExternalFont::readXbf2GlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out) const {
+  if (!_fontFile || !_isRichMetricsFormat || !out || _glyphDataOffset < _metricsTableOffset) {
+    return false;
+  }
+
+  const uint32_t metricsTableSize = _glyphDataOffset - _metricsTableOffset;
+  if (metricsTableSize == 0 || (metricsTableSize % XBF2_GLYPH_METRICS_SIZE) != 0) {
+    return false;
+  }
+
+  const uint32_t entryCount = metricsTableSize / XBF2_GLYPH_METRICS_SIZE;
+  uint8_t entry[XBF2_GLYPH_METRICS_SIZE];
+  for (uint32_t index = 0; index < entryCount; ++index) {
+    const uint32_t offset = _metricsTableOffset + (index * XBF2_GLYPH_METRICS_SIZE);
+    if (!_fontFile.seek(offset)) {
+      return false;
+    }
+    if (_fontFile.read(entry, sizeof(entry)) != sizeof(entry)) {
+      return false;
+    }
+    if (readUint32LE(entry) != codepoint) {
+      continue;
+    }
+
+    out->width = _charWidth;
+    out->height = _charHeight;
+    out->left = readInt16LE(entry + 4);
+    out->top = readInt16LE(entry + 6);
+    out->advanceX = static_cast<uint8_t>(readUint16LE(entry + 8));
+    out->flags = readUint16LE(entry + 10);
+    return true;
+  }
+
+  return false;
+}
+
 bool ExternalFont::readGlyphFromSD(uint32_t codepoint, uint8_t* buffer) {
   if (!_fontFile) {
     return false;
   }
 
   // Calculate offset
-  const uint32_t offset = codepoint * _bytesPerChar;
+  const uint32_t offset = _glyphDataOffset + (codepoint * _bytesPerChar);
 
   // Sequential read fast path - skip seek if reading consecutive glyphs
   bool needSeek = true;
@@ -326,22 +379,30 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
   // Whitespace characters are expected to be empty but should still be rendered
   _cache[slot].notFound = !readSuccess || (isEmpty && !isWhitespace && codepoint > 0x7F);
 
-  // Store metrics
-  if (!isEmpty) {
-    _cache[slot].minX = minX;
+  _cache[slot].metrics = {};
+  _cache[slot].metrics.width = _charWidth;
+  _cache[slot].metrics.height = _charHeight;
+
+  if (_isRichMetricsFormat) {
+    readXbf2GlyphMetrics(actualCodepoint, &_cache[slot].metrics);
+  } else if (!isEmpty) {
+    _cache[slot].metrics.left = minX;
+    _cache[slot].metrics.top = _charHeight;
     // CJK/fullwidth chars: use charWidth (= font-defined character spacing)
     // Latin/narrow chars: use content width + 2px padding, capped at charWidth
     const bool isFullwidth =
         (codepoint >= 0x2E80 && codepoint <= 0x9FFF) || (codepoint >= 0x3000 && codepoint <= 0x30FF) ||
         (codepoint >= 0xF900 && codepoint <= 0xFAFF) || (codepoint >= 0xFF00 && codepoint <= 0xFF60);
     if (isFullwidth) {
-      _cache[slot].advanceX = _charWidth;
+      _cache[slot].metrics.advanceX = _charWidth;
     } else {
       const uint8_t contentAdvance = (maxX - minX + 1) + 2;
-      _cache[slot].advanceX = (contentAdvance > _charWidth) ? _charWidth : contentAdvance;
+      _cache[slot].metrics.advanceX = (contentAdvance > _charWidth) ? _charWidth : contentAdvance;
     }
+    _cache[slot].metrics.flags = 0x01;
   } else {
-    _cache[slot].minX = 0;
+    _cache[slot].metrics.left = 0;
+    _cache[slot].metrics.top = _charHeight;
     // Special handling for whitespace characters
     if (isWhitespace) {
       // em-space (U+2003) and similar should be full-width (same as CJK char)
@@ -349,20 +410,20 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
       // Other spaces use appropriate widths
       if (codepoint == 0x2003) {
         // em-space: full CJK character width
-        _cache[slot].advanceX = _charWidth;
+        _cache[slot].metrics.advanceX = _charWidth;
       } else if (codepoint == 0x2002) {
         // en-space: half CJK character width
-        _cache[slot].advanceX = _charWidth / 2;
+        _cache[slot].metrics.advanceX = _charWidth / 2;
       } else if (codepoint == 0x3000) {
         // Ideographic space (CJK full-width space): full width
-        _cache[slot].advanceX = _charWidth;
+        _cache[slot].metrics.advanceX = _charWidth;
       } else {
         // Other spaces: use standard space width
-        _cache[slot].advanceX = _charWidth / 3;
+        _cache[slot].metrics.advanceX = _charWidth / 3;
       }
     } else {
       // Fallback for other empty glyphs
-      _cache[slot].advanceX = _charWidth / 3;
+      _cache[slot].metrics.advanceX = _charWidth / 3;
     }
   }
 
@@ -384,13 +445,30 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
 }
 
 bool ExternalFont::getGlyphMetrics(uint32_t codepoint, uint8_t* outMinX, uint8_t* outAdvanceX) {
-  if (!_cache) return false;
-  int idx = findInCache(codepoint);
-  if (idx >= 0 && !_cache[idx].notFound) {
-    if (outMinX) *outMinX = _cache[idx].minX;
-    if (outAdvanceX) *outAdvanceX = _cache[idx].advanceX;
-    return true;
+  ExternalGlyphMetrics metrics{};
+  if (!getGlyphMetrics(codepoint, &metrics)) {
+    return false;
   }
+  if (outMinX) *outMinX = static_cast<uint8_t>(metrics.left);
+  if (outAdvanceX) *outAdvanceX = metrics.advanceX;
+  return true;
+}
+
+bool ExternalFont::getGlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out) const {
+  if (!out || !_isLoaded) return false;
+
+  if (_cache) {
+    int idx = findInCache(codepoint);
+    if (idx >= 0 && !_cache[idx].notFound) {
+      *out = _cache[idx].metrics;
+      return true;
+    }
+  }
+
+  if (_isRichMetricsFormat) {
+    return readXbf2GlyphMetrics(codepoint, out);
+  }
+
   return false;
 }
 
