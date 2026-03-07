@@ -240,6 +240,7 @@ bool ExternalFont::readXbf2GlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics
 
   const uint32_t metricsTableSize = _glyphDataOffset - _metricsTableOffset;
   if (metricsTableSize == 0 || (metricsTableSize % XBF2_GLYPH_METRICS_SIZE) != 0) {
+    _hasLastReadOffset = false;
     return false;
   }
 
@@ -248,15 +249,19 @@ bool ExternalFont::readXbf2GlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics
   for (uint32_t index = 0; index < entryCount; ++index) {
     const uint32_t offset = _metricsTableOffset + (index * XBF2_GLYPH_METRICS_SIZE);
     if (!_fontFile.seek(offset)) {
+      _hasLastReadOffset = false;
       return false;
     }
     if (_fontFile.read(entry, sizeof(entry)) != sizeof(entry)) {
+      _hasLastReadOffset = false;
       return false;
     }
     if (readUint32LE(entry) != codepoint) {
+      _hasLastReadOffset = false;
       continue;
     }
 
+    _hasLastReadOffset = false;
     out->width = _charWidth;
     out->height = _charHeight;
     out->left = readInt16LE(entry + 4);

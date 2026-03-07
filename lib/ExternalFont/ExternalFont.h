@@ -134,8 +134,8 @@ class ExternalFont {
   uint32_t _accessCounter = 0;
 
   // Sequential read fast path - skip seek if reading consecutive glyphs
-  uint32_t _lastReadOffset = 0;
-  bool _hasLastReadOffset = false;
+  mutable uint32_t _lastReadOffset = 0;
+  mutable bool _hasLastReadOffset = false;
 
   // Simple hash table for O(1) cache lookup (codepoint -> cache index, -1 if
   // not cached)

@@ -59,8 +59,10 @@ int main() {
   appendUint16(xbf2, 18);
   appendUint16(xbf2, 0x01);
 
-  std::vector<uint8_t> glyphBytes(12, 0xAB);
-  xbf2.insert(xbf2.end(), glyphBytes.begin(), glyphBytes.end());
+  std::vector<uint8_t> firstGlyphBytes(12, 0xAB);
+  std::vector<uint8_t> secondGlyphBytes(12, 0xCD);
+  xbf2.insert(xbf2.end(), firstGlyphBytes.begin(), firstGlyphBytes.end());
+  xbf2.insert(xbf2.end(), secondGlyphBytes.begin(), secondGlyphBytes.end());
 
   HostStorage::clear();
   HostStorage::registerFile(path, xbf2);
@@ -80,8 +82,16 @@ int main() {
   expect((metrics.flags & 0x01) == 0x01, "Expected XBF2 glyph metrics flags to include hasInk bit");
 
   const uint8_t* glyph = font.getGlyph(0);
-  expect(glyph != nullptr, "Expected getGlyph(0) to return glyph data for XBF2 font");
-  expect(glyph[0] == 0xAB, "Expected getGlyph(0) to read bitmap bytes after XBF2 header and metrics table");
+  expect(glyph != nullptr, "Expected getGlyph(0) to return first glyph data for XBF2 font");
+  expect(glyph[0] == 0xAB, "Expected getGlyph(0) to read first glyph bytes after XBF2 header and metrics table");
+
+  ExternalGlyphMetrics cachedMetrics{};
+  expect(font.getGlyphMetrics(0x41, &cachedMetrics), "Expected cached getGlyphMetrics(0x41, &cachedMetrics) to succeed for XBF2 font");
+
+  const uint8_t* nextGlyph = font.getGlyph(1);
+  expect(nextGlyph != nullptr, "Expected getGlyph(1) to return second glyph data for XBF2 font");
+  expect(nextGlyph[0] == 0xCD,
+         "Expected getGlyph(1) to seek to the second glyph after metrics lookup instead of reusing stale sequential read position");
 
   std::vector<uint8_t> invalidXbf2;
   appendBytes(invalidXbf2, {'X', 'B', 'F', '2'});
