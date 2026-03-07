@@ -7,6 +7,21 @@
 #include <cstring>
 #include <vector>
 
+namespace {
+
+constexpr uint8_t XBF2_MAGIC[4] = {'X', 'B', 'F', '2'};
+constexpr size_t XBF2_HEADER_SIZE = 12;
+
+int16_t readInt16LE(const uint8_t* bytes) {
+  return static_cast<int16_t>(static_cast<uint16_t>(bytes[0]) | (static_cast<uint16_t>(bytes[1]) << 8));
+}
+
+uint16_t readUint16LE(const uint8_t* bytes) {
+  return static_cast<uint16_t>(bytes[0]) | (static_cast<uint16_t>(bytes[1]) << 8);
+}
+
+}  // namespace
+
 ExternalFont::~ExternalFont() { unload(); }
 
 void ExternalFont::unload() {
@@ -20,6 +35,8 @@ void ExternalFont::unload() {
   _charHeight = 0;
   _bytesPerRow = 0;
   _bytesPerChar = 0;
+  _isRichMetricsFormat = false;
+  _fontMetrics = {};
   _accessCounter = 0;
   _lastReadOffset = 0;
   _hasLastReadOffset = false;
@@ -115,6 +132,28 @@ bool ExternalFont::load(const char* filepath) {
 
   if (!Storage.openFileForRead("EXT_FONT", filepath, _fontFile)) {
     LOG_ERR("EFT", "Failed to open: %s", filepath);
+    return false;
+  }
+
+  uint8_t header[XBF2_HEADER_SIZE];
+  const size_t headerBytesRead = _fontFile.read(header, sizeof(header));
+  if (headerBytesRead == sizeof(header) && memcmp(header, XBF2_MAGIC, sizeof(XBF2_MAGIC)) == 0) {
+    _isRichMetricsFormat = true;
+    _charWidth = header[4];
+    _charHeight = header[5];
+    _bytesPerRow = (_charWidth + 7) / 8;
+    _bytesPerChar = _bytesPerRow * _charHeight;
+    _fontMetrics.ascender = readInt16LE(header + 6);
+    _fontMetrics.descender = readInt16LE(header + 8);
+    _fontMetrics.lineHeight = readUint16LE(header + 10);
+
+    if (_bytesPerChar > MAX_GLYPH_BYTES) {
+      LOG_ERR("EFT", "Glyph too large: %d bytes (max %d)", _bytesPerChar, MAX_GLYPH_BYTES);
+      _fontFile.close();
+      return false;
+    }
+  } else if (!_fontFile.seek(0)) {
+    _fontFile.close();
     return false;
   }
 

@@ -5,6 +5,20 @@
 #include <cstddef>
 #include <cstdint>
 
+struct ExternalGlyphMetrics {
+  uint8_t width = 0;
+  uint8_t height = 0;
+  uint8_t advanceX = 0;
+  int16_t left = 0;
+  int16_t top = 0;
+};
+
+struct ExternalFontMetrics {
+  int16_t ascender = 0;
+  int16_t descender = 0;
+  uint16_t lineHeight = 0;
+};
+
 /**
  * External font loader - supports Xteink .bin format
  * Filename format: FontName_size_WxH.bin (e.g. KingHwaOldSong_38_33x39.bin)
@@ -57,6 +71,10 @@ class ExternalFont {
   size_t getCacheCapacity() const { return CACHE_SIZE; }
 
   bool isLoaded() const { return _isLoaded; }
+  bool isRichMetricsFormat() const { return _isRichMetricsFormat; }
+  int16_t getAscender() const { return _fontMetrics.ascender; }
+  int16_t getDescender() const { return _fontMetrics.descender; }
+  uint16_t getLineHeight() const { return _fontMetrics.lineHeight; }
   void unload();
 
   /**
@@ -89,6 +107,8 @@ class ExternalFont {
   uint8_t _charHeight = 0;
   uint8_t _bytesPerRow = 0;
   uint16_t _bytesPerChar = 0;
+  bool _isRichMetricsFormat = false;
+  ExternalFontMetrics _fontMetrics;
 
   // LRU cache - dynamically allocated on load(), freed on unload()
   // 128 glyphs for CJK text rendering (~34KB per font when loaded).
