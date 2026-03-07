@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Bitmap.h"
+#include "ExternalGlyphLayout.h"
 
 // Forward declaration for external font support
 class ExternalFont;
@@ -60,8 +61,8 @@ class GfxRenderer {
   mutable bool skipDarkModeForImages = false;
   void renderChar(int fontId, const EpdFontFamily& fontFamily, uint32_t cp, int* x, const int* y, bool pixelState,
                   EpdFontFamily::Style style) const;
-  void renderExternalGlyph(const uint8_t* bitmap, ExternalFont* font, int* x, int y, bool pixelState,
-                           int advanceOverride = -1, int minX = 0) const;
+  void renderExternalGlyph(const uint8_t* bitmap, ExternalFont* font, int* x, int lineTopY, bool pixelState,
+                           const ExternalGlyphMetrics& metrics, int advanceOverride = -1) const;
   // Render CJK character using built-in UI font (from PROGMEM)
   void renderBuiltinCjkGlyph(uint32_t cp, int* x, int y, bool pixelState) const;
   // Check if fontId is a reader font (should use external Chinese font)

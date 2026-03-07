@@ -1945,8 +1945,11 @@ void GfxRenderer::renderChar(const int fontId, const EpdFontFamily& fontFamily, 
       if (extFont) {
         const uint8_t* bitmap = extFont->getGlyph(cp);
         if (bitmap) {
-          uint8_t minX = 0, advanceX = extFont->getCharWidth();
-          extFont->getGlyphMetrics(cp, &minX, &advanceX);
+          ExternalGlyphMetrics metrics{};
+          metrics.width = extFont->getCharWidth();
+          metrics.height = extFont->getCharHeight();
+          metrics.advanceX = extFont->getCharWidth();
+          extFont->getGlyphMetrics(cp, &metrics);
           int spacing = 0;
           if (isCjk) {
             spacing = cjkSpacing;
@@ -1955,8 +1958,8 @@ void GfxRenderer::renderChar(const int fontId, const EpdFontFamily& fontFamily, 
           } else if (isAsciiLetter(cp)) {
             spacing = asciiLetterSpacing;
           }
-          int advance = clampExternalAdvance(advanceX, spacing);
-          renderExternalGlyph(bitmap, extFont, x, *y, pixelState, advance, minX);
+          int advance = clampExternalAdvance(metrics.advanceX, spacing);
+          renderExternalGlyph(bitmap, extFont, x, *y, pixelState, metrics, advance);
           return;
         }
         // Missing glyph in external font - try built-in CJK UI font for CJK
@@ -1983,9 +1986,12 @@ void GfxRenderer::renderChar(const int fontId, const EpdFontFamily& fontFamily, 
         if (uiExtFont) {
           const uint8_t* bitmap = uiExtFont->getGlyph(cp);
           if (bitmap) {
-            uint8_t minX = 0, advanceX = 0;
-            uiExtFont->getGlyphMetrics(cp, &minX, &advanceX);
-            renderExternalGlyph(bitmap, uiExtFont, x, *y, pixelState, advanceX, minX);
+            ExternalGlyphMetrics metrics{};
+            metrics.width = uiExtFont->getCharWidth();
+            metrics.height = uiExtFont->getCharHeight();
+            metrics.advanceX = uiExtFont->getCharWidth();
+            uiExtFont->getGlyphMetrics(cp, &metrics);
+            renderExternalGlyph(bitmap, uiExtFont, x, *y, pixelState, metrics, metrics.advanceX);
             return;
           }
         }
@@ -1997,9 +2003,12 @@ void GfxRenderer::renderChar(const int fontId, const EpdFontFamily& fontFamily, 
         if (extFont) {
           const uint8_t* bitmap = extFont->getGlyph(cp);
           if (bitmap) {
-            uint8_t minX = 0, advanceX = 0;
-            extFont->getGlyphMetrics(cp, &minX, &advanceX);
-            renderExternalGlyph(bitmap, extFont, x, *y, pixelState, advanceX, minX);
+            ExternalGlyphMetrics metrics{};
+            metrics.width = extFont->getCharWidth();
+            metrics.height = extFont->getCharHeight();
+            metrics.advanceX = extFont->getCharWidth();
+            extFont->getGlyphMetrics(cp, &metrics);
+            renderExternalGlyph(bitmap, extFont, x, *y, pixelState, metrics, metrics.advanceX);
             return;
           }
         }
@@ -2016,9 +2025,12 @@ void GfxRenderer::renderChar(const int fontId, const EpdFontFamily& fontFamily, 
         if (uiExtFont) {
           const uint8_t* bitmap = uiExtFont->getGlyph(cp);
           if (bitmap) {
-            uint8_t minX = 0, advanceX = 0;
-            uiExtFont->getGlyphMetrics(cp, &minX, &advanceX);
-            renderExternalGlyph(bitmap, uiExtFont, x, *y, pixelState, advanceX, minX);
+            ExternalGlyphMetrics metrics{};
+            metrics.width = uiExtFont->getCharWidth();
+            metrics.height = uiExtFont->getCharHeight();
+            metrics.advanceX = uiExtFont->getCharWidth();
+            uiExtFont->getGlyphMetrics(cp, &metrics);
+            renderExternalGlyph(bitmap, uiExtFont, x, *y, pixelState, metrics, metrics.advanceX);
             return;
           }
         }
@@ -2168,32 +2180,27 @@ int GfxRenderer::getEffectiveFontId(int fontId) const {
   return fontId;
 }
 
-void GfxRenderer::renderExternalGlyph(const uint8_t* bitmap, ExternalFont* font, int* x, const int y,
-                                      const bool pixelState, const int advanceOverride, const int minX) const {
-  const uint8_t width = font->getCharWidth();
-  const uint8_t height = font->getCharHeight();
+void GfxRenderer::renderExternalGlyph(const uint8_t* bitmap, ExternalFont* font, int* x, const int lineTopY,
+                                      const bool pixelState, const ExternalGlyphMetrics& metrics,
+                                      const int advanceOverride) const {
+  const uint8_t width = metrics.width > 0 ? metrics.width : font->getCharWidth();
+  const uint8_t height = metrics.height > 0 ? metrics.height : font->getCharHeight();
   const uint8_t bytesPerRow = font->getBytesPerRow();
+  const ExternalGlyphLayout layout = computeExternalGlyphLayout(*x, lineTopY, *font, metrics, advanceOverride);
 
-  // Calculate starting Y position (baseline alignment)
-  const int startY = y - height + 4;  // +4 is baseline adjustment
-
-  // Only render pixels from minX onwards, drawn at screen position *x
-  // This trims the left-side empty space so advanceX matches the drawn width
   for (int glyphY = 0; glyphY < height; glyphY++) {
-    const int screenY = startY + glyphY;
-    for (int glyphX = minX; glyphX < width; glyphX++) {
+    const int screenY = layout.drawY + glyphY;
+    for (int glyphX = 0; glyphX < width; glyphX++) {
       const int byteIndex = glyphY * bytesPerRow + (glyphX / 8);
       const int bitIndex = 7 - (glyphX % 8);  // MSB first
 
       if ((bitmap[byteIndex] >> bitIndex) & 1) {
-        drawPixel(*x + (glyphX - minX), screenY, pixelState);
+        drawPixel(layout.drawX + glyphX, screenY, pixelState);
       }
     }
   }
 
-  // Advance cursor
-  const int advance = (advanceOverride >= 0) ? advanceOverride : width;
-  *x += std::max(1, advance);
+  *x += layout.advanceX;
 }
 
 void GfxRenderer::renderBuiltinCjkGlyph(const uint32_t cp, int* x, const int y, const bool pixelState) const {
