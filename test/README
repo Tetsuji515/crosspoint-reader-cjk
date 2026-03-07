@@ -9,3 +9,7 @@ in the development cycle.
 
 More information about PlatformIO Unit Testing:
 - https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+
+Runnable host-side test entry for Task 1 XBF2 header parsing:
+- Pass path: `python3 test/run_external_font_xbf2_header_test.py`
+- Fail proof path: `python3 test/run_external_font_xbf2_header_test.py fail`
