@@ -21,6 +21,7 @@
 #include "html/FilesPageHtml.generated.h"
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
+#include "util/ExternalFontLabel.h"
 #include "util/StringUtils.h"
 
 namespace {
@@ -1201,10 +1202,8 @@ void CrossPointWebServer::handleGetSettings() const {
           for (int i = 0; i < FontMgr.getFontCount(); i++) {
             const FontInfo* info = FontMgr.getFontInfo(i);
             if (!info) continue;
-            std::string label = std::string(info->name) + " (" + std::to_string(info->size) + "pt)";
-            if (!ExternalFont::canFitGlyph(info->width, info->height)) {
-              label += " [!]";
-            }
+            std::string label = buildExternalFontLabel(info->filename, info->name, info->size,
+                                                       ExternalFont::canFitGlyph(info->width, info->height));
             options.add(label);
           }
         } else {
@@ -1275,10 +1274,8 @@ void CrossPointWebServer::handleGetSettings() const {
   for (int i = 0; i < FontMgr.getFontCount(); i++) {
     const FontInfo* info = FontMgr.getFontInfo(i);
     if (!info) continue;
-    std::string label = std::string(info->name) + " (" + std::to_string(info->size) + "pt)";
-    if (!ExternalFont::canFitGlyph(info->width, info->height)) {
-      label += " [!]";
-    }
+    std::string label = buildExternalFontLabel(info->filename, info->name, info->size,
+                                               ExternalFont::canFitGlyph(info->width, info->height));
     uiOptions.add(label);
   }
 

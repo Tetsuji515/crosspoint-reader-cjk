@@ -20,6 +20,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ExternalFontLabel.h"
 
 const StrId SettingsActivity::categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
                                                               StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM};
@@ -334,7 +335,9 @@ void SettingsActivity::render(Activity::RenderLock&&) {
           // Font Family: show external font name when selected
           if (setting.nameId == StrId::STR_FONT_FAMILY && FontMgr.getSelectedIndex() >= 0) {
             const FontInfo* info = FontMgr.getFontInfo(FontMgr.getSelectedIndex());
-            valueText = info ? info->name : tr(STR_EXTERNAL_FONT);
+            valueText = info ? buildExternalFontLabel(info->filename, info->name, info->size,
+                                                      ExternalFont::canFitGlyph(info->width, info->height))
+                             : tr(STR_EXTERNAL_FONT);
           // Font Size: show actual pixel size when external font is active
           } else if (setting.nameId == StrId::STR_FONT_SIZE && FontMgr.getSelectedIndex() >= 0) {
             const FontInfo* info = FontMgr.getFontInfo(FontMgr.getSelectedIndex());
@@ -356,7 +359,9 @@ void SettingsActivity::render(Activity::RenderLock&&) {
           if (FontMgr.isUiFontEnabled()) {
             const int idx = FontMgr.getUiSelectedIndex();
             const FontInfo* info = FontMgr.getFontInfo(idx);
-            valueText = info ? info->name : tr(STR_EXTERNAL_FONT);
+            valueText = info ? buildExternalFontLabel(info->filename, info->name, info->size,
+                                                      ExternalFont::canFitGlyph(info->width, info->height))
+                             : tr(STR_EXTERNAL_FONT);
           } else {
             valueText = tr(STR_BUILTIN_DISABLED);
           }

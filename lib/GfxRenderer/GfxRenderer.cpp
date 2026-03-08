@@ -1,6 +1,7 @@
 #include "GfxRenderer.h"
 
 #include <EInkDisplay.h>
+#include "ExternalAdvance.h"
 #include <EpdFontFamily.h>
 #include <FontManager.h>
 #include <Logging.h>
@@ -388,15 +389,13 @@ int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontF
           }
           const uint8_t* bitmap = extFont->getGlyph(cp);
           if (bitmap) {
-            uint8_t advanceX = extFont->getCharWidth();
-            extFont->getGlyphMetrics(cp, nullptr, &advanceX);
             int spacing = 0;
             if (isAsciiDigit(cp)) {
               spacing = asciiDigitSpacing;
             } else if (isAsciiLetter(cp)) {
               spacing = asciiLetterSpacing;
             }
-            width += clampExternalAdvance(advanceX, spacing);
+            width += getExternalGlyphAdvanceForRendering(*extFont, cp, spacing);
           } else {
             // Fall back to built-in reader font width
             const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
@@ -457,13 +456,7 @@ int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontF
           }
 
           if (uiExtFont) {
-            uint8_t minX, advanceX;
-            if (uiExtFont->getGlyphMetrics(cp, &minX, &advanceX)) {
-              width += advanceX;
-            } else {
-              // External font doesn't have this glyph either, use its charWidth
-              width += uiExtFont->getCharWidth();
-            }
+            width += getExternalGlyphAdvanceForRendering(*uiExtFont, cp, 0);
           } else {
             // No external font, use built-in font width
             const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
@@ -577,9 +570,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
                 }
               }
             }
-            uint8_t advanceX = charWidth;
-            uiExtFont->getGlyphMetrics(cp, nullptr, &advanceX);
-            xPos += advanceX;
+            xPos += getExternalGlyphAdvanceForRendering(*uiExtFont, cp, 0);
             rendered = true;
           }
         }
@@ -1373,9 +1364,7 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
     if (fm.isExternalFontEnabled()) {
       ExternalFont* extFont = fm.getActiveFont();
       if (extFont && extFont->getGlyph(' ')) {
-        uint8_t advanceX = extFont->getCharWidth();
-        extFont->getGlyphMetrics(' ', nullptr, &advanceX);
-        return clampExternalAdvance(advanceX, 0);
+        return getExternalGlyphAdvanceForRendering(*extFont, ' ', 0);
       }
     }
   }
@@ -1421,15 +1410,13 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
           // Non-CJK: try external font glyph metrics
           const uint8_t* bitmap = extFont->getGlyph(cp);
           if (bitmap) {
-            uint8_t advanceX = extFont->getCharWidth();
-            extFont->getGlyphMetrics(cp, nullptr, &advanceX);
             int spacing = 0;
             if (isAsciiDigit(cp)) {
               spacing = asciiDigitSpacing;
             } else if (isAsciiLetter(cp)) {
               spacing = asciiLetterSpacing;
             }
-            width += clampExternalAdvance(advanceX, spacing);
+            width += getExternalGlyphAdvanceForRendering(*extFont, cp, spacing);
           } else if (fallbackIt != fontMap.end()) {
             // Fall back to built-in reader font for missing glyphs
             const EpdGlyph* glyph = fallbackIt->second.getGlyph(cp, style);
@@ -1473,7 +1460,9 @@ int GfxRenderer::getFontAscenderSize(const int fontId) const {
     if (fm.isExternalFontEnabled()) {
       ExternalFont* extFont = fm.getActiveFont();
       if (extFont) {
-        // For external fonts, use charHeight as ascender
+        if (extFont->isRichMetricsFormat() && extFont->getAscender() > 0) {
+          return extFont->getAscender();
+        }
         return extFont->getCharHeight();
       }
     }
@@ -1499,7 +1488,9 @@ int GfxRenderer::getLineHeight(const int fontId) const {
     if (fm.isExternalFontEnabled()) {
       ExternalFont* extFont = fm.getActiveFont();
       if (extFont) {
-        // charHeight is the line spacing defined by the font
+        if (extFont->isRichMetricsFormat() && extFont->getLineHeight() > 0) {
+          return extFont->getLineHeight();
+        }
         return extFont->getCharHeight();
       }
     }

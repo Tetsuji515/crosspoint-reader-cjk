@@ -10,5 +10,5 @@ struct ExternalGlyphLayout {
   bool trimLeadingEmptyColumns = false;
 };
 
-ExternalGlyphLayout computeExternalGlyphLayout(int cursorX, int lineTopY, const ExternalFont& font,
+ExternalGlyphLayout computeExternalGlyphLayout(int cursorX, int baselineY, const ExternalFont& font,
                                                const ExternalGlyphMetrics& metrics, int advanceOverride = -1);

@@ -72,10 +72,13 @@ bool ExternalFont::parseFilename(const char* filepath) {
   strncpy(nameCopy, filename, sizeof(nameCopy) - 1);
   nameCopy[sizeof(nameCopy) - 1] = '\0';
 
-  // Remove .bin extension
+  // Remove supported extension (.bin legacy font or .xbf2 rich-metrics font)
   char* ext = strstr(nameCopy, ".bin");
   if (!ext) {
-    LOG_ERR("EFT", "Invalid filename: no .bin extension");
+    ext = strstr(nameCopy, ".xbf2");
+  }
+  if (!ext) {
+    LOG_ERR("EFT", "Invalid filename: unsupported extension (expected .bin or .xbf2)");
     return false;
   }
   *ext = '\0';
@@ -246,7 +249,11 @@ bool ExternalFont::readXbf2GlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics
 
   const uint32_t entryCount = metricsTableSize / XBF2_GLYPH_METRICS_SIZE;
   uint8_t entry[XBF2_GLYPH_METRICS_SIZE];
-  for (uint32_t index = 0; index < entryCount; ++index) {
+  uint32_t left = 0;
+  uint32_t right = entryCount;
+
+  while (left < right) {
+    const uint32_t index = left + ((right - left) / 2);
     const uint32_t offset = _metricsTableOffset + (index * XBF2_GLYPH_METRICS_SIZE);
     if (!_fontFile.seek(offset)) {
       _hasLastReadOffset = false;
@@ -256,21 +263,27 @@ bool ExternalFont::readXbf2GlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics
       _hasLastReadOffset = false;
       return false;
     }
-    if (readUint32LE(entry) != codepoint) {
+
+    const uint32_t entryCodepoint = readUint32LE(entry);
+    if (entryCodepoint == codepoint) {
       _hasLastReadOffset = false;
-      continue;
+      out->width = _charWidth;
+      out->height = _charHeight;
+      out->left = readInt16LE(entry + 4);
+      out->top = readInt16LE(entry + 6);
+      out->advanceX = readUint16LE(entry + 8);
+      out->flags = readUint16LE(entry + 10);
+      return true;
     }
 
-    _hasLastReadOffset = false;
-    out->width = _charWidth;
-    out->height = _charHeight;
-    out->left = readInt16LE(entry + 4);
-    out->top = readInt16LE(entry + 6);
-    out->advanceX = static_cast<uint8_t>(readUint16LE(entry + 8));
-    out->flags = readUint16LE(entry + 10);
-    return true;
+    if (entryCodepoint < codepoint) {
+      left = index + 1;
+    } else {
+      right = index;
+    }
   }
 
+  _hasLastReadOffset = false;
   return false;
 }
 
@@ -396,8 +409,10 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
     // CJK/fullwidth chars: use charWidth (= font-defined character spacing)
     // Latin/narrow chars: use content width + 2px padding, capped at charWidth
     const bool isFullwidth =
-        (codepoint >= 0x2E80 && codepoint <= 0x9FFF) || (codepoint >= 0x3000 && codepoint <= 0x30FF) ||
-        (codepoint >= 0xF900 && codepoint <= 0xFAFF) || (codepoint >= 0xFF00 && codepoint <= 0xFF60);
+        (actualCodepoint >= 0x2E80 && actualCodepoint <= 0x9FFF) ||
+        (actualCodepoint >= 0x3000 && actualCodepoint <= 0x30FF) ||
+        (actualCodepoint >= 0xF900 && actualCodepoint <= 0xFAFF) ||
+        (actualCodepoint >= 0xFF00 && actualCodepoint <= 0xFF60);
     if (isFullwidth) {
       _cache[slot].metrics.advanceX = _charWidth;
     } else {
@@ -455,7 +470,7 @@ bool ExternalFont::getGlyphMetrics(uint32_t codepoint, uint8_t* outMinX, uint8_t
     return false;
   }
   if (outMinX) *outMinX = static_cast<uint8_t>(metrics.left);
-  if (outAdvanceX) *outAdvanceX = metrics.advanceX;
+  if (outAdvanceX) *outAdvanceX = static_cast<uint8_t>(std::min<uint16_t>(metrics.advanceX, 255));
   return true;
 }
 
