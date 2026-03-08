@@ -9,6 +9,7 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ExternalFontLabel.h"
 
 namespace {
 constexpr int kBuiltinReaderFontCount = 3;
@@ -178,9 +179,7 @@ void FontSelectActivity::render() {
           const FontInfo* info = FontMgr.getFontInfo(i - kBuiltinReaderFontCount);
           if (info) {
             const bool loadable = ExternalFont::canFitGlyph(info->width, info->height);
-            char label[80];
-            snprintf(label, sizeof(label), "%s (%dpt)%s", info->name, info->size, loadable ? "" : " [!]");
-            return std::string(label);
+            return buildExternalFontLabel(info->filename, info->name, info->size, loadable);
           }
         } else {
           if (i == 0) {
@@ -189,9 +188,7 @@ void FontSelectActivity::render() {
           const FontInfo* info = FontMgr.getFontInfo(i - 1);
           if (info) {
             const bool loadable = ExternalFont::canFitGlyph(info->width, info->height);
-            char label[80];
-            snprintf(label, sizeof(label), "%s (%dpt)%s", info->name, info->size, loadable ? "" : " [!]");
-            return std::string(label);
+            return buildExternalFontLabel(info->filename, info->name, info->size, loadable);
           }
         }
         return "";

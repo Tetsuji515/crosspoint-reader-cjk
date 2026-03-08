@@ -9,6 +9,7 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ExternalFontLabel.h"
 
 namespace {
 constexpr int kBuiltinReaderFontCount = 3;
@@ -154,7 +155,9 @@ std::string EpubReaderMenuActivity::getCurrentFontLabel() const {
   const int currentExternal = FontMgr.getSelectedIndex();
   if (currentExternal >= 0) {
     const FontInfo* info = FontMgr.getFontInfo(currentExternal);
-    return info ? std::string(info->name) : std::string(tr(STR_EXTERNAL_FONT));
+    return info ? buildExternalFontLabel(info->filename, info->name, info->size,
+                                         ExternalFont::canFitGlyph(info->width, info->height))
+                : std::string(tr(STR_EXTERNAL_FONT));
   }
 
   for (int i = 0; i < kBuiltinReaderFontCount; ++i) {
