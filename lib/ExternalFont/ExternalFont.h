@@ -8,7 +8,7 @@
 struct ExternalGlyphMetrics {
   uint8_t width = 0;
   uint8_t height = 0;
-  uint8_t advanceX = 0;
+  uint16_t advanceX = 0;
   uint16_t flags = 0;
   int16_t left = 0;
   int16_t top = 0;

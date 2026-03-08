@@ -41,7 +41,7 @@ void appendUint32(std::vector<uint8_t>& bytes, uint32_t value) {
 }  // namespace
 
 int main() {
-  const char* path = "/fonts/TestFont_16_8x12.bin";
+  const char* path = "/fonts/TestFont_16_8x12.xbf2";
 
   std::vector<uint8_t> xbf2;
   appendBytes(xbf2, {'X', 'B', 'F', '2'});
@@ -50,13 +50,19 @@ int main() {
   appendInt16(xbf2, -3);
   appendUint16(xbf2, 14);
   appendUint32(xbf2, 28);
-  appendUint32(xbf2, 40);
+  appendUint32(xbf2, 52);
   appendBytes(xbf2, {0, 0, 0, 0, 0, 0, 0, 0});
 
   appendUint32(xbf2, 0x41);
   appendInt16(xbf2, 1);
   appendInt16(xbf2, 23);
   appendUint16(xbf2, 18);
+  appendUint16(xbf2, 0x01);
+
+  appendUint32(xbf2, 0x42);
+  appendInt16(xbf2, -2);
+  appendInt16(xbf2, 10);
+  appendUint16(xbf2, 300);
   appendUint16(xbf2, 0x01);
 
   std::vector<uint8_t> firstGlyphBytes(12, 0xAB);
@@ -80,6 +86,13 @@ int main() {
   expect(metrics.top == 23, "Expected XBF2 glyph metrics top to equal 23");
   expect(metrics.advanceX == 18, "Expected XBF2 glyph metrics advanceX to equal 18");
   expect((metrics.flags & 0x01) == 0x01, "Expected XBF2 glyph metrics flags to include hasInk bit");
+
+  ExternalGlyphMetrics metricsWideAdvance{};
+  expect(font.getGlyphMetrics(0x42, &metricsWideAdvance), "Expected getGlyphMetrics(0x42, &metricsWideAdvance) to succeed for XBF2 font");
+  expect(metricsWideAdvance.left == -2, "Expected XBF2 glyph metrics left to preserve negative bearings");
+  expect(metricsWideAdvance.top == 10, "Expected XBF2 glyph metrics top to equal 10");
+  expect(metricsWideAdvance.advanceX == 300, "Expected XBF2 glyph metrics advanceX to preserve full 16-bit value");
+  expect((metricsWideAdvance.flags & 0x01) == 0x01, "Expected second XBF2 glyph metrics flags to include hasInk bit");
 
   const uint8_t* glyph = font.getGlyph(0);
   expect(glyph != nullptr, "Expected getGlyph(0) to return first glyph data for XBF2 font");

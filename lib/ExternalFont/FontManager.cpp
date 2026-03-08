@@ -44,8 +44,10 @@ void FontManager::scanFonts() {
     entry.getName(filename, sizeof(filename));
     entry.close();
 
-    // Check .bin extension
-    if (!strstr(filename, ".bin")) {
+    // Check supported font extensions
+    const bool isLegacyBin = strstr(filename, ".bin") != nullptr;
+    const bool isRichXbf2 = strstr(filename, ".xbf2") != nullptr;
+    if (!isLegacyBin && !isRichXbf2) {
       continue;
     }
 
@@ -59,8 +61,11 @@ void FontManager::scanFonts() {
     strncpy(nameCopy, filename, sizeof(nameCopy) - 1);
     nameCopy[sizeof(nameCopy) - 1] = '\0';
 
-    // Remove .bin
+    // Remove supported extension
     char* ext = strstr(nameCopy, ".bin");
+    if (!ext) {
+      ext = strstr(nameCopy, ".xbf2");
+    }
     if (ext) *ext = '\0';
 
     // Parse _WxH

@@ -73,15 +73,25 @@ int main() {
   expect(font.getGlyphMetrics(0x41, &metrics), "Expected external glyph metrics to load for layout test");
 
   const int cursorX = 30;
-  const int lineTopY = 50;
-  const ExternalGlyphLayout layout = computeExternalGlyphLayout(cursorX, lineTopY, font, metrics);
+  const int baselineY = 59;
+  const ExternalGlyphLayout layout = computeExternalGlyphLayout(cursorX, baselineY, font, metrics);
 
-  expect(layout.baselineY == 59, "Expected baselineY = lineTopY + extFont->getAscender()");
+  expect(layout.baselineY == 59,
+         "Expected external glyph layout to treat incoming y as baseline instead of adding ascender again");
   expect(layout.drawX == 32, "Expected drawX = cursorX + left");
   expect(layout.drawY == 48, "Expected drawY = baselineY - top");
   expect(layout.advanceX == 6, "Expected cursor advance to equal advanceX");
   expect(!layout.trimLeadingEmptyColumns,
          "Expected richer external metrics path to keep explicit left bearing instead of trimming minX");
+
+  ExternalGlyphMetrics negativeBearingMetrics = metrics;
+  negativeBearingMetrics.left = -4;
+  negativeBearingMetrics.top = 7;
+  negativeBearingMetrics.advanceX = 300;
+  const ExternalGlyphLayout wideAdvanceLayout = computeExternalGlyphLayout(cursorX, baselineY, font, negativeBearingMetrics);
+  expect(wideAdvanceLayout.drawX == 26, "Expected drawX to preserve negative left bearing");
+  expect(wideAdvanceLayout.drawY == 52, "Expected drawY = baselineY - top for alternate metrics");
+  expect(wideAdvanceLayout.advanceX == 300, "Expected layout advanceX to preserve full 16-bit glyph advance");
 
   return 0;
 }
