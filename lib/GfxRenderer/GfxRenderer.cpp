@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #include "FontCacheManager.h"
+#include <FontDecompressor.h>
 
 // Built-in CJK UI font (embedded in flash) - 20px only
 #include "cjk_ui_font_20.h"
@@ -246,7 +247,6 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
             renderer.drawPixel(screenX, screenY, pixelState);
           } else if (renderMode == GfxRenderer::GRAYSCALE_MSB && (bmpVal == 1 || bmpVal == 2)) {
             // Light gray (also mark the MSB if it's going to be a dark gray too)
-            // Dedicated X3 gray LUTs now provide proper 4-level gray on both devices
             // We have to flag pixels in reverse for the gray buffers, as 0 leave alone, 1 update
             renderer.drawPixel(screenX, screenY, false);
           } else if (renderMode == GfxRenderer::GRAYSCALE_LSB && bmpVal == 1) {
@@ -1307,7 +1307,14 @@ void GfxRenderer::invertScreen() const {
 void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
-  display.displayBuffer(refreshMode, fadingFix);
+  // In dark mode, use DARK_REDRIVE for FAST_REFRESH to re-drive all pixels and
+  // prevent ghosting accumulation on the black background. HALF/FULL_REFRESH modes
+  // already drive all pixels, so they don't need substitution.
+  if (darkMode && refreshMode == HalDisplay::FAST_REFRESH) {
+    display.displayBuffer(HalDisplay::DARK_REDRIVE, fadingFix);
+  } else {
+    display.displayBuffer(refreshMode, fadingFix);
+  }
 }
 
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
@@ -2159,27 +2166,13 @@ void GfxRenderer::renderChar(const int fontId, const EpdFontFamily& fontFamily, 
           const uint8_t bmpVal = 3 - ((byte >> bit_index) & 0x3);
 
           if (renderMode == BW) {
-            bool shouldDraw = false;
-            if (darkMode) {
-              if (bmpVal == 0) {
-                shouldDraw = true;
-              }
-            } else if (bmpVal < 3) {
-              shouldDraw = true;
-            }
-
-            if (shouldDraw) {
+            if (bmpVal < 3) {
               drawPixel(screenX, screenY, pixelState);
             }
-          } else if (renderMode == GRAYSCALE_MSB || renderMode == GRAYSCALE_LSB) {
-            if (bmpVal < 3) {
-              uint8_t val = bmpVal;
-              if (darkMode) {
-                val = 3 - val;
-              }
-              bool bit = (renderMode == GRAYSCALE_LSB) ? (val & 1) : ((val >> 1) & 1);
-              drawPixel(screenX, screenY, !bit);
-            }
+          } else if (renderMode == GRAYSCALE_MSB && (bmpVal == 1 || bmpVal == 2)) {
+            drawPixel(screenX, screenY, false);
+          } else if (renderMode == GRAYSCALE_LSB && bmpVal == 1) {
+            drawPixel(screenX, screenY, false);
           }
         } else {
           const uint8_t byte = bitmap[pixelPosition / 8];

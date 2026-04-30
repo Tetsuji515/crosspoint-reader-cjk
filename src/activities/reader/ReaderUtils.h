@@ -49,10 +49,15 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   return {prev, next};
 }
 
-inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh) {
+inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh, bool darkMode = false) {
   if (pagesUntilFullRefresh <= 1) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
+  } else if (darkMode) {
+    // In dark mode, use DARK_REDRIVE to re-drive all pixels every page turn.
+    // This prevents ghosting accumulation without the visible flash of HALF_REFRESH.
+    renderer.displayBufferDarkRedrive();
+    pagesUntilFullRefresh--;
   } else {
     renderer.displayBuffer();
     pagesUntilFullRefresh--;
