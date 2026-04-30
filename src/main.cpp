@@ -31,8 +31,8 @@
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 
-HalDisplay display;
-HalGPIO gpio;
+extern HalDisplay display;
+extern HalGPIO gpio;
 MappedInputManager mappedInputManager(gpio, &BLUETOOTH_PAGE_TURN.getState());
 GfxRenderer renderer(display);
 ActivityManager activityManager(renderer, mappedInputManager);
@@ -335,7 +335,7 @@ void loop() {
   static unsigned long lastMemPrint = 0;
 
   gpio.update();
-  BLUETOOTH_PAGE_TURN.setReaderSessionActive(currentActivity && currentActivity->isReaderActivity());
+  BLUETOOTH_PAGE_TURN.setReaderSessionActive(activityManager.isReaderActivity());
   BLUETOOTH_PAGE_TURN.update();
 
   renderer.setFadingFix(SETTINGS.fadingFix);

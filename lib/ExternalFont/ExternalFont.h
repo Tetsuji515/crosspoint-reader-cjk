@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDCardManager.h>
+#include <HalStorage.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -99,7 +99,7 @@ class ExternalFont {
 
  private:
   // Font file handle (keep open to avoid repeated open/close)
-  mutable FsFile _fontFile;
+  mutable HalFile _fontFile;
   bool _isLoaded = false;
 
   // Properties parsed from filename
