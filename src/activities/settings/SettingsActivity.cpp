@@ -6,7 +6,6 @@
 #include <Logging.h>
 
 #include "ButtonRemapActivity.h"
-#include "CalibreSettingsActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
 #include "FontSelectActivity.h"
@@ -17,6 +16,7 @@
 #include "OtaUpdateActivity.h"
 #include "SettingsList.h"
 #include "StatusBarSettingsActivity.h"
+#include "activities/network/CalibreConnectActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -97,16 +97,12 @@ void SettingsActivity::onEnter() {
 }
 
 void SettingsActivity::onExit() {
-  ActivityWithSubactivity::onExit();
+  Activity::onExit();
 
   UITheme::getInstance().reload();  // Re-apply theme in case it was changed
 }
 
 void SettingsActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
-    return;
-  }
   bool hasChangedCategory = false;
 
   // Handle actions with early return
@@ -124,7 +120,7 @@ void SettingsActivity::loop() {
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     SETTINGS.saveToFile();
-    onGoHome();
+    finish();
     return;
   }
 
@@ -194,12 +190,11 @@ void SettingsActivity::toggleCurrentSetting() {
     }
     // Font Family: open FontSelectActivity (combined built-in + external fonts)
     if (setting.nameId == StrId::STR_FONT_FAMILY) {
-      exitActivity();
-      enterNewActivity(new FontSelectActivity(renderer, mappedInput, FontSelectActivity::SelectMode::Reader,
-                                              [this] {
-                                                exitActivity();
-                                                requestUpdate();
-                                              }));
+      startActivityForResult(std::make_unique<FontSelectActivity>(renderer, mappedInput, FontSelectActivity::SelectMode::Reader),
+                            [this](const ActivityResult&) {
+                              invalidateSectionPreservingPosition();
+                              requestUpdate();
+                            });
       return;
     }
     const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
@@ -212,19 +207,18 @@ void SettingsActivity::toggleCurrentSetting() {
   } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
     // Line spacing uses a slider activity (0.8x-2.5x) for finer control.
     if (setting.nameId == StrId::STR_LINE_SPACING) {
-      exitActivity();
-      enterNewActivity(new LineSpacingSelectionActivity(
-          renderer, mappedInput, static_cast<int>(SETTINGS.lineSpacing),
-          [this](const int selectedValue) {
-            SETTINGS.lineSpacing = static_cast<uint8_t>(selectedValue);
-            SETTINGS.saveToFile();
-            exitActivity();
+      startActivityForResult(
+          std::make_unique<LineSpacingSelectionActivity>(renderer, mappedInput, static_cast<int>(SETTINGS.lineSpacing)),
+          [this](const ActivityResult& result) {
+            if (!result.isCancelled) {
+              auto* data = std::get_if<PercentResult>(&result.data);
+              if (data) {
+                SETTINGS.lineSpacing = static_cast<uint8_t>(data->percent);
+                SETTINGS.saveToFile();
+              }
+            }
             requestUpdate();
-          },
-          [this] {
-            exitActivity();
-            requestUpdate();
-          }));
+          });
       return;
     }
 
@@ -235,49 +229,44 @@ void SettingsActivity::toggleCurrentSetting() {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
   } else if (setting.type == SettingType::ACTION) {
-    auto enterSubActivity = [this](Activity* activity) {
-      exitActivity();
-      enterNewActivity(activity);
-    };
-
-    auto onComplete = [this] {
-      exitActivity();
-      requestUpdate();
-    };
-
-    auto onCompleteBool = [this](bool) {
-      exitActivity();
-      requestUpdate();
-    };
-
     switch (setting.action) {
       case SettingAction::RemapFrontButtons:
-        enterSubActivity(new ButtonRemapActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::CustomiseStatusBar:
-        enterSubActivity(new StatusBarSettingsActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::KOReaderSync:
-        enterSubActivity(new KOReaderSettingsActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::OPDSBrowser:
-        enterSubActivity(new CalibreSettingsActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<CalibreConnectActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::Network:
-        enterSubActivity(new WifiSelectionActivity(renderer, mappedInput, onCompleteBool, false));
+        startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::ClearCache:
-        enterSubActivity(new ClearCacheActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<ClearCacheActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::CheckForUpdates:
-        enterSubActivity(new OtaUpdateActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<OtaUpdateActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::Language:
-        enterSubActivity(new LanguageSelectActivity(renderer, mappedInput, onComplete));
+        startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::SelectUiFont:
-        enterSubActivity(
-            new FontSelectActivity(renderer, mappedInput, FontSelectActivity::SelectMode::UI, onComplete));
+        startActivityForResult(std::make_unique<FontSelectActivity>(renderer, mappedInput, FontSelectActivity::SelectMode::UI),
+                               [this](const ActivityResult&) {
+                                 requestUpdate();
+                               });
         break;
       case SettingAction::None:
         // Do nothing
@@ -293,7 +282,7 @@ void SettingsActivity::toggleCurrentSetting() {
   SETTINGS.saveToFile();
 }
 
-void SettingsActivity::render(Activity::RenderLock&&) {
+void SettingsActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();
@@ -376,4 +365,8 @@ void SettingsActivity::render(Activity::RenderLock&&) {
 
   // Always use standard refresh for settings screen
   renderer.displayBuffer();
+}
+
+void SettingsActivity::invalidateSectionPreservingPosition() {
+  // No-op in standalone Settings; only meaningful when pushed from EpubReaderActivity.
 }

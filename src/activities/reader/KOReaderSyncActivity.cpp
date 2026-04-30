@@ -74,20 +74,20 @@ void KOReaderSyncActivity::onWifiSelectionComplete(const bool success) {
   LOG_DBG("KOSync", "WiFi connected, starting sync");
 
   {
-    RenderLock lock(*this);
+    RenderLock lock;
     state = SYNCING;
     statusMessage = tr(STR_SYNCING_TIME);
   }
-  requestUpdate(true);
+  requestUpdate();
 
   // Sync time with NTP before making API requests
   syncTimeWithNTP();
 
   {
-    RenderLock lock(*this);
+    RenderLock lock;
     statusMessage = tr(STR_CALC_HASH);
   }
-  requestUpdate(true);
+  requestUpdate();
 
   performSync();
 }
@@ -101,18 +101,18 @@ void KOReaderSyncActivity::performSync() {
   }
   if (documentHash.empty()) {
     {
-      RenderLock lock(*this);
+      RenderLock lock;
       state = SYNC_FAILED;
       statusMessage = tr(STR_HASH_FAILED);
     }
-    requestUpdate(true);
+    requestUpdate();
     return;
   }
 
   LOG_DBG("KOSync", "Document hash: %s", documentHash.c_str());
 
   {
-    RenderLock lock(*this);
+    RenderLock lock;
     statusMessage = tr(STR_FETCH_PROGRESS);
   }
   requestUpdateAndWait();
@@ -123,21 +123,21 @@ void KOReaderSyncActivity::performSync() {
   if (result == KOReaderSyncClient::NOT_FOUND) {
     // No remote progress - offer to upload
     {
-      RenderLock lock(*this);
+      RenderLock lock;
       state = NO_REMOTE_PROGRESS;
       hasRemoteProgress = false;
     }
-    requestUpdate(true);
+    requestUpdate();
     return;
   }
 
   if (result != KOReaderSyncClient::OK) {
     {
-      RenderLock lock(*this);
+      RenderLock lock;
       state = SYNC_FAILED;
       statusMessage = KOReaderSyncClient::errorString(result);
     }
-    requestUpdate(true);
+    requestUpdate();
     return;
   }
 
@@ -164,7 +164,7 @@ void KOReaderSyncActivity::performSync() {
   localProgress = ProgressMapper::toKOReader(epub, localPos);
 
   {
-    RenderLock lock(*this);
+    RenderLock lock;
     state = SHOWING_RESULT;
 
     // Default to the option that corresponds to the furthest progress
@@ -174,12 +174,12 @@ void KOReaderSyncActivity::performSync() {
       selectedOption = 0;  // Apply remote progress
     }
   }
-  requestUpdate(true);
+  requestUpdate();
 }
 
 void KOReaderSyncActivity::performUpload() {
   {
-    RenderLock lock(*this);
+    RenderLock lock;
     state = UPLOADING;
     statusMessage = tr(STR_UPLOAD_PROGRESS);
   }
@@ -200,7 +200,7 @@ void KOReaderSyncActivity::performUpload() {
   if (result != KOReaderSyncClient::OK) {
     wifiOff();
     {
-      RenderLock lock(*this);
+      RenderLock lock;
       state = SYNC_FAILED;
       statusMessage = KOReaderSyncClient::errorString(result);
     }
@@ -210,10 +210,10 @@ void KOReaderSyncActivity::performUpload() {
 
   wifiOff();
   {
-    RenderLock lock(*this);
+    RenderLock lock;
     state = UPLOAD_COMPLETE;
   }
-  requestUpdate(true);
+  requestUpdate();
 }
 
 void KOReaderSyncActivity::onEnter() {

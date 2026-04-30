@@ -235,7 +235,7 @@ void OpdsBookBrowserActivity::navigateToEntry(const OpdsEntry& entry) {
   statusMessage = tr(STR_LOADING);
   entries.clear();
   selectorIndex = 0;
-  requestUpdate(true);
+  requestUpdate();
   fetchFeed(currentPath);
 }
 
@@ -258,7 +258,7 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   state = BrowserState::DOWNLOADING;
   statusMessage = book.title;
   downloadProgress = downloadTotal = 0;
-  requestUpdate(true);
+  requestUpdate();
 
   // Build full download URL relative to the current feed, not the root server URL
   const std::string feedUrl = UrlUtils::buildUrl(server.url, currentPath);
@@ -272,7 +272,7 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
       [this](const size_t downloaded, const size_t total) {
         downloadProgress = downloaded;
         downloadTotal = total;
-        requestUpdate(true);
+        requestUpdate();
       },
       server.username, server.password);
 
@@ -334,7 +334,7 @@ void OpdsBookBrowserActivity::performSearch(const std::string& query) {
 
   state = BrowserState::LOADING;
   statusMessage = tr(STR_LOADING);
-  requestUpdate(true);
+  requestUpdate();
   fetchFeed(url);
 }
 
@@ -361,7 +361,7 @@ void OpdsBookBrowserActivity::onWifiSelectionComplete(const bool connected) {
   if (connected) {
     state = BrowserState::LOADING;
     statusMessage = tr(STR_LOADING);
-    requestUpdate(true);
+    requestUpdate();
     fetchFeed(currentPath);
   } else {
     WiFi.disconnect();

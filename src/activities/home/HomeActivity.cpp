@@ -15,6 +15,7 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/StringUtils.h"
@@ -139,7 +140,7 @@ bool HomeActivity::storeCoverBuffer() {
   // Free any existing buffer first
   freeCoverBuffer();
 
-  const size_t bufferSize = GfxRenderer::getBufferSize();
+  const size_t bufferSize = renderer.getBufferSize();
   coverBuffer = static_cast<uint8_t*>(malloc(bufferSize));
   if (!coverBuffer) {
     return false;
@@ -159,7 +160,7 @@ bool HomeActivity::restoreCoverBuffer() {
     return false;
   }
 
-  const size_t bufferSize = GfxRenderer::getBufferSize();
+  const size_t bufferSize = renderer.getBufferSize();
   memcpy(frameBuffer, coverBuffer, bufferSize);
   return true;
 }
@@ -196,22 +197,22 @@ void HomeActivity::loop() {
     const int settingsIdx = idx;
 
     if (selectorIndex < recentBooks.size()) {
-      onSelectBook(recentBooks[selectorIndex].path);
+      activityManager.goToReader(recentBooks[selectorIndex].path);
     } else if (menuSelectedIndex == myLibraryIdx) {
-      onMyLibraryOpen();
+      activityManager.goToFileBrowser();
     } else if (menuSelectedIndex == recentsIdx) {
-      onRecentsOpen();
+      activityManager.goToRecentBooks();
     } else if (menuSelectedIndex == opdsLibraryIdx) {
-      onOpdsBrowserOpen();
+      activityManager.goToBrowser();
     } else if (menuSelectedIndex == fileTransferIdx) {
-      onFileTransferOpen();
+      activityManager.goToFileTransfer();
     } else if (menuSelectedIndex == settingsIdx) {
-      onSettingsOpen();
+      activityManager.goToSettings();
     }
   }
 }
 
-void HomeActivity::render(Activity::RenderLock&&) {
+void HomeActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();

@@ -14,25 +14,20 @@
 namespace {
 constexpr int kBuiltinReaderFontCount = 3;
 constexpr CrossPointSettings::FONT_FAMILY kBuiltinReaderFonts[kBuiltinReaderFontCount] = {
-    CrossPointSettings::BOOKERLY, CrossPointSettings::NOTOSANS, CrossPointSettings::OPENDYSLEXIC};
-constexpr StrId kBuiltinReaderFontLabels[kBuiltinReaderFontCount] = {StrId::STR_BOOKERLY, StrId::STR_NOTO_SANS,
+    CrossPointSettings::NOTOSERIF, CrossPointSettings::NOTOSANS, CrossPointSettings::OPENDYSLEXIC};
+constexpr StrId kBuiltinReaderFontLabels[kBuiltinReaderFontCount] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS,
                                                                      StrId::STR_OPEN_DYSLEXIC};
 }  // namespace
 
 void EpubReaderMenuActivity::onEnter() {
-  ActivityWithSubactivity::onEnter();
+  Activity::onEnter();
   skipNextButtonCheck = true;
   requestUpdate();
 }
 
-void EpubReaderMenuActivity::onExit() { ActivityWithSubactivity::onExit(); }
+void EpubReaderMenuActivity::onExit() { Activity::onExit(); }
 
 void EpubReaderMenuActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
-    return;
-  }
-
   if (skipNextButtonCheck) {
     const bool confirmCleared = !mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
                                 !mappedInput.wasReleased(MappedInputManager::Button::Confirm);
@@ -67,27 +62,33 @@ void EpubReaderMenuActivity::loop() {
 
     if (selectedAction == MenuAction::STYLE_FIRST_LINE_INDENT || selectedAction == MenuAction::STYLE_INVERT_IMAGES) {
       // Toggle-style actions keep the reader menu open; refresh the row value in-place.
-      onAction(selectedAction);
+      if (selectedAction == MenuAction::STYLE_FIRST_LINE_INDENT) {
+        SETTINGS.firstLineIndent = !SETTINGS.firstLineIndent;
+        SETTINGS.saveToFile();
+      } else if (selectedAction == MenuAction::STYLE_INVERT_IMAGES) {
+        SETTINGS.invertImages = !SETTINGS.invertImages;
+        SETTINGS.saveToFile();
+        renderer.setInvertImagesInDarkMode(SETTINGS.invertImages);
+      }
       requestUpdate();
       return;
     }
 
-    // 1. Capture the callback and action locally
-    auto actionCallback = onAction;
-
-    // 2. Execute the callback
-    actionCallback(selectedAction);
-
-    // 3. CRITICAL: Return immediately. 'this' is likely deleted now.
+    // Set result with the chosen action and return to caller
+    setResult(ActivityResult(MenuResult{static_cast<int>(selectedAction), pendingOrientation}));
+    finish();
     return;
   } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Return the pending orientation to the parent so it can apply on exit.
-    onBack(pendingOrientation);
-    return;  // Also return here just in case
+    ActivityResult result(MenuResult{-1, pendingOrientation});
+    result.isCancelled = true;
+    setResult(std::move(result));
+    finish();
+    return;
   }
 }
 
-void EpubReaderMenuActivity::render(Activity::RenderLock&&) {
+void EpubReaderMenuActivity::render(RenderLock&&) {
   renderer.clearScreen();
   const auto pageWidth = renderer.getScreenWidth();
   const auto orientation = renderer.getOrientation();

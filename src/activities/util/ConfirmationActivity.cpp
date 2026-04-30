@@ -29,7 +29,7 @@ void ConfirmationActivity::onEnter() {
 
   startY = (renderer.getScreenHeight() - totalHeight) / 2;
 
-  requestUpdate(true);
+  requestUpdate();
 }
 
 void ConfirmationActivity::render(RenderLock&& lock) {

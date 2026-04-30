@@ -1,30 +1,23 @@
 #pragma once
 
-#include <functional>
-
 #include "MappedInputManager.h"
-#include "activities/ActivityWithSubactivity.h"
+#include "activities/Activity.h"
+#include "activities/ActivityResult.h"
 #include "util/ButtonNavigator.h"
 
-class LineSpacingSelectionActivity final : public ActivityWithSubactivity {
+class LineSpacingSelectionActivity final : public Activity {
  public:
-  explicit LineSpacingSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int initialValue,
-                                        const std::function<void(int)>& onSelect, const std::function<void()>& onCancel)
-      : ActivityWithSubactivity("LineSpacingSelection", renderer, mappedInput),
-        value(initialValue),
-        onSelect(onSelect),
-        onCancel(onCancel) {}
+  explicit LineSpacingSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int initialValue)
+      : Activity("LineSpacingSelection", renderer, mappedInput), value(initialValue) {}
 
   void onEnter() override;
   void onExit() override;
   void loop() override;
-  void render(Activity::RenderLock&&) override;
+  void render(RenderLock&&) override;
 
  private:
   int value = 100;
   ButtonNavigator buttonNavigator;
-  const std::function<void(int)> onSelect;
-  const std::function<void()> onCancel;
 
   void adjustValue(int delta);
 };

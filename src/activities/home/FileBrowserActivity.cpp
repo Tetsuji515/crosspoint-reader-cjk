@@ -187,7 +187,7 @@ void FileBrowserActivity::loop() {
               selectorIndex = files.size() - 1;
             }
 
-            requestUpdate(true);
+            requestUpdate();
           } else {
             LOG_ERR("FileBrowser", "Failed to delete file: %s", fullPath.c_str());
           }

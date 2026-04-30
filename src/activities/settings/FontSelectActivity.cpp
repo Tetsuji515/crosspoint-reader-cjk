@@ -14,13 +14,13 @@
 namespace {
 constexpr int kBuiltinReaderFontCount = 3;
 constexpr CrossPointSettings::FONT_FAMILY kBuiltinReaderFonts[kBuiltinReaderFontCount] = {
-    CrossPointSettings::BOOKERLY, CrossPointSettings::NOTOSANS, CrossPointSettings::OPENDYSLEXIC};
-constexpr StrId kBuiltinReaderFontLabels[kBuiltinReaderFontCount] = {StrId::STR_BOOKERLY, StrId::STR_NOTO_SANS,
+    CrossPointSettings::NOTOSERIF, CrossPointSettings::NOTOSANS, CrossPointSettings::OPENDYSLEXIC};
+constexpr StrId kBuiltinReaderFontLabels[kBuiltinReaderFontCount] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS,
                                                                      StrId::STR_OPEN_DYSLEXIC};
 }  // namespace
 
 void FontSelectActivity::onEnter() {
-  ActivityWithSubactivity::onEnter();
+  Activity::onEnter();
 
   // Wait for parent activity's rendering to complete (screen refresh takes ~422ms)
   // Wait 500ms to be safe and avoid race conditions with parent activity
@@ -47,23 +47,14 @@ void FontSelectActivity::onEnter() {
     selectedIndex = (currentFont < 0) ? 0 : currentFont + 1;
   }
 
-  // 同步渲染，不使用后台任务
-  render();
+  requestUpdate();
 }
 
-void FontSelectActivity::onExit() {
-  ActivityWithSubactivity::onExit();
-  // 不需要清理任务和 mutex，因为我们不再使用它们
-}
+void FontSelectActivity::onExit() { Activity::onExit(); }
 
 void FontSelectActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
-    return;
-  }
-
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    onBack();
+    finish();
     return;
   }
 
@@ -84,9 +75,8 @@ void FontSelectActivity::loop() {
     needsRender = true;
   }
 
-  // 同步渲染
   if (needsRender) {
-    render();
+    requestUpdate();
   }
 }
 
@@ -133,11 +123,11 @@ void FontSelectActivity::handleSelection() {
   LOG_DBG("FNT", "After selection: readerIndex=%d, uiIndex=%d", FontMgr.getSelectedIndex(),
           FontMgr.getUiSelectedIndex());
 
-  // Return to previous page
-  onBack();
+  // Return to previous screen
+  finish();
 }
 
-void FontSelectActivity::render() {
+void FontSelectActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();
