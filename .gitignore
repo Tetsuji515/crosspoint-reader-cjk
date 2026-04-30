@@ -14,10 +14,14 @@ build
 /.cache
 
 docs/plans/
+docs/superpowers/
+memory/
 .spec-workflow/
 .serena/
+.skills/
 .claude/
 .history/
 /.venv
 *.local*
 worktrees/
+test/
