@@ -2,6 +2,8 @@
 
 #include <HalGPIO.h>
 
+class BluetoothPageTurnState;
+
 class MappedInputManager {
  public:
   enum class Button { Back, Confirm, Left, Right, Up, Down, Power, PageBack, PageForward };
@@ -14,7 +16,8 @@ class MappedInputManager {
     const char* btn4;
   };
 
-  explicit MappedInputManager(HalGPIO& gpio) : gpio(gpio) {}
+  explicit MappedInputManager(HalGPIO& gpio, const BluetoothPageTurnState* bluetoothPageTurnState = nullptr)
+      : gpio(gpio), bluetoothPageTurnState(bluetoothPageTurnState) {}
 
   void update() const { gpio.update(); }
   bool wasPressed(Button button) const;
@@ -35,6 +38,7 @@ class MappedInputManager {
 
  private:
   HalGPIO& gpio;
+  const BluetoothPageTurnState* bluetoothPageTurnState = nullptr;
   Orientation effectiveOrientation = Orientation::Portrait;
 
   bool mapButton(Button button, bool (HalGPIO::*fn)(uint8_t) const) const;

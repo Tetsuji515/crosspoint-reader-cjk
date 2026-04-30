@@ -1,9 +1,8 @@
 #pragma once
+#include <HalStorage.h>
+
 #include <cstdint>
 #include <iosfwd>
-
-// Forward declarations
-class FsFile;
 
 class CrossPointSettings {
  private:
@@ -98,7 +97,7 @@ class CrossPointSettings {
   enum SIDE_BUTTON_LAYOUT { PREV_NEXT = 0, NEXT_PREV = 1, SIDE_BUTTON_LAYOUT_COUNT };
 
   // Font family options
-  enum FONT_FAMILY { BOOKERLY = 0, NOTOSANS = 1, OPENDYSLEXIC = 2, FONT_FAMILY_COUNT };
+  enum FONT_FAMILY { NOTOSERIF = 0, NOTOSANS = 1, OPENDYSLEXIC = 2, FONT_FAMILY_COUNT };
   // Font size options
   enum FONT_SIZE { SMALL = 0, MEDIUM = 1, LARGE = 2, EXTRA_LARGE = 3, FONT_SIZE_COUNT };
   // Legacy line spacing enum values kept for backward compatibility migration.
@@ -138,7 +137,7 @@ class CrossPointSettings {
   };
 
   // Short power button press actions
-  enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, SHORT_PWRBTN_COUNT };
+  enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, FORCE_REFRESH = 3, SHORT_PWRBTN_COUNT };
 
   // Hide battery percentage
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
@@ -148,6 +147,9 @@ class CrossPointSettings {
 
   // Color mode (light/dark)
   enum COLOR_MODE { LIGHT_MODE = 0, DARK_MODE = 1 };
+
+  // Image rendering in EPUB reader
+  enum IMAGE_RENDERING { IMAGES_DISPLAY = 0, IMAGES_PLACEHOLDER = 1, IMAGES_SUPPRESS = 2, IMAGE_RENDERING_COUNT };
 
   // Sleep screen settings
   uint8_t sleepScreen = DARK;
@@ -181,7 +183,7 @@ class CrossPointSettings {
   uint8_t frontButtonLeft = FRONT_HW_LEFT;
   uint8_t frontButtonRight = FRONT_HW_RIGHT;
   // Reader font settings
-  uint8_t fontFamily = BOOKERLY;
+  uint8_t fontFamily = NOTOSERIF;
   uint8_t fontSize = MEDIUM;
   uint8_t lineSpacing = LINE_SPACING_DEFAULT;
   uint8_t paragraphAlignment = JUSTIFIED;
@@ -207,6 +209,10 @@ class CrossPointSettings {
   uint8_t fadingFix = 0;
   // Use book's embedded CSS styles for EPUB rendering (1 = enabled, 0 = disabled)
   uint8_t embeddedStyle = 1;
+  // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
+  uint8_t showHiddenFiles = 0;
+  // Image rendering mode in EPUB reader
+  uint8_t imageRendering = IMAGES_DISPLAY;
 
   // CJK-specific settings
   // UI orientation (Portrait or Inverted only)
@@ -218,6 +224,11 @@ class CrossPointSettings {
   uint8_t invertImages = 0;
   // Color mode (light/dark) for reader
   uint8_t colorMode = LIGHT_MODE;
+  // Bluetooth page turner settings
+  uint8_t bluetoothPageTurnEnabled = 0;
+  uint8_t bluetoothPageTurnBonded = 0;
+  char bluetoothPageTurnAddr[18] = "";
+  char bluetoothPageTurnName[64] = "";
 
   ~CrossPointSettings() = default;
 

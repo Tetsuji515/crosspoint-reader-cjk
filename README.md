@@ -50,6 +50,7 @@ This project adapts the original CrossPoint Reader for CJK support, featuring a 
   - [x] Cover sleep screen
 - [x] Wifi book upload
 - [x] Wifi OTA updates
+- [x] KOReader Sync integration for cross-device reading progress
 - [x] Configurable font, layout, and display options
   - [ ] User provided fonts
   - [ ] Full UTF support

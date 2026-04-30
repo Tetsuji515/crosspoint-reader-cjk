@@ -1,6 +1,7 @@
 #include "MappedInputManager.h"
 
 #include "CrossPointSettings.h"
+#include "input/BluetoothPageTurnState.h"
 
 namespace {
 using ButtonIndex = uint8_t;
@@ -16,8 +17,8 @@ struct SideLayoutMap {
 // position). The mapping below accounts for this so that PREV_NEXT means
 // "from top to bottom: previous page, next page".
 constexpr SideLayoutMap kSideLayouts[] = {
-    {HalGPIO::BTN_DOWN, HalGPIO::BTN_UP},   // PREV_NEXT: top(DOWN)=prev, bottom(UP)=next
-    {HalGPIO::BTN_UP, HalGPIO::BTN_DOWN},   // NEXT_PREV: top(DOWN)=next, bottom(UP)=prev
+    {HalGPIO::BTN_DOWN, HalGPIO::BTN_UP},  // PREV_NEXT: top(DOWN)=prev, bottom(UP)=next
+    {HalGPIO::BTN_UP, HalGPIO::BTN_DOWN},  // NEXT_PREV: top(DOWN)=next, bottom(UP)=prev
 };
 
 // Mirror a front button hardware index (0<->3, 1<->2) for inverted orientation.
@@ -74,15 +75,61 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
   return false;
 }
 
-bool MappedInputManager::wasPressed(const Button button) const { return mapButton(button, &HalGPIO::wasPressed); }
+bool MappedInputManager::wasPressed(const Button button) const {
+  const bool physicalPressed = mapButton(button, &HalGPIO::wasPressed);
+  if (!bluetoothPageTurnState) {
+    return physicalPressed;
+  }
 
-bool MappedInputManager::wasReleased(const Button button) const { return mapButton(button, &HalGPIO::wasReleased); }
+  switch (button) {
+    case Button::PageBack:
+      return physicalPressed || bluetoothPageTurnState->wasPageBackPressed();
+    case Button::PageForward:
+      return physicalPressed || bluetoothPageTurnState->wasPageForwardPressed();
+    default:
+      return physicalPressed;
+  }
+}
 
-bool MappedInputManager::isPressed(const Button button) const { return mapButton(button, &HalGPIO::isPressed); }
+bool MappedInputManager::wasReleased(const Button button) const {
+  const bool physicalReleased = mapButton(button, &HalGPIO::wasReleased);
+  if (!bluetoothPageTurnState) {
+    return physicalReleased;
+  }
 
-bool MappedInputManager::wasAnyPressed() const { return gpio.wasAnyPressed(); }
+  switch (button) {
+    case Button::PageBack:
+      return physicalReleased || bluetoothPageTurnState->wasPageBackReleased();
+    case Button::PageForward:
+      return physicalReleased || bluetoothPageTurnState->wasPageForwardReleased();
+    default:
+      return physicalReleased;
+  }
+}
 
-bool MappedInputManager::wasAnyReleased() const { return gpio.wasAnyReleased(); }
+bool MappedInputManager::isPressed(const Button button) const {
+  const bool physicalPressed = mapButton(button, &HalGPIO::isPressed);
+  if (!bluetoothPageTurnState) {
+    return physicalPressed;
+  }
+
+  switch (button) {
+    case Button::PageBack:
+      return physicalPressed || bluetoothPageTurnState->isPageBackPressed();
+    case Button::PageForward:
+      return physicalPressed || bluetoothPageTurnState->isPageForwardPressed();
+    default:
+      return physicalPressed;
+  }
+}
+
+bool MappedInputManager::wasAnyPressed() const {
+  return gpio.wasAnyPressed() || (bluetoothPageTurnState && bluetoothPageTurnState->wasAnyPressed());
+}
+
+bool MappedInputManager::wasAnyReleased() const {
+  return gpio.wasAnyReleased() || (bluetoothPageTurnState && bluetoothPageTurnState->wasAnyReleased());
+}
 
 unsigned long MappedInputManager::getHeldTime() const { return gpio.getHeldTime(); }
 
