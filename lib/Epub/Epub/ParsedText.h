@@ -19,6 +19,7 @@ class ParsedText {
   BlockStyle blockStyle;
   bool firstLineIndent;
   bool hyphenationEnabled;
+  bool extraParagraphSpacing;
 
   void applyParagraphIndent();
   std::vector<size_t> computeLineBreaks(const GfxRenderer& renderer, int fontId, int pageWidth,
@@ -35,8 +36,9 @@ class ParsedText {
 
  public:
   explicit ParsedText(const bool hyphenationEnabled = false, const BlockStyle& blockStyle = BlockStyle(),
-                      const bool firstLineIndent = false)
-      : blockStyle(blockStyle), firstLineIndent(firstLineIndent), hyphenationEnabled(hyphenationEnabled) {}
+                      const bool firstLineIndent = false, const bool extraParagraphSpacing = false)
+      : blockStyle(blockStyle), firstLineIndent(firstLineIndent), hyphenationEnabled(hyphenationEnabled),
+        extraParagraphSpacing(extraParagraphSpacing) {}
   ~ParsedText() = default;
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false);

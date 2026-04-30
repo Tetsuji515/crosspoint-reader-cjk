@@ -145,7 +145,7 @@ def load_translations(
     # Filter languages if a filter is provided
     if language_filter:
         filter_upper = {code.upper() for code in language_filter}
-        filter_upper.add("ENGLISH")  # Always include English
+        filter_upper.add("EN")  # Always include English (matches _language_code in english.yaml)
         filtered_parsed = {}
         for name, data in parsed.items():
             code = data.get("_language_code", "").upper()
