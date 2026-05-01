@@ -3,6 +3,7 @@
 #include <HalPowerManager.h>
 
 #include "OpdsServerStore.h"
+#include "OrientationHelper.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -111,6 +112,11 @@ void ActivityManager::loop() {
       // Current activity has requested a new activity to be launched
       RenderLock lock;
 
+      // Cache action since we clear pendingAction below before deciding whether
+      // to apply orientation. Replace = fresh navigation (apply); Push =
+      // subactivity inherits parent's orientation (skip).
+      const bool isReplace = (pendingAction == PendingAction::Replace);
+
       if (pendingAction == PendingAction::Replace) {
         // Destroy the current activity
         exitActivity(lock);
@@ -128,6 +134,12 @@ void ActivityManager::loop() {
       currentActivity = std::move(pendingActivity);
 
       lock.unlock();  // onEnter may acquire its own lock
+      // Apply screen+input orientation BEFORE onEnter so the activity's
+      // onEnter / first render see the correct orientation. Subactivities
+      // pushed from a reader keep the parent's landscape orientation.
+      if (isReplace) {
+        OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
+      }
       currentActivity->onEnter();
 
       // onEnter may request another pending action, we will handle it in the next loop iteration
@@ -163,6 +175,8 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   } else {
     // No current activity, safe to launch immediately
     currentActivity = std::move(newActivity);
+    // Apply orientation before onEnter so the first render is rotated correctly.
+    OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
     currentActivity->onEnter();
   }
 }

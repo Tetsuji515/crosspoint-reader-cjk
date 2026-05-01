@@ -29,7 +29,8 @@ void TxtReaderActivity::onEnter() {
     return;
   }
 
-  ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
+  // Screen orientation (renderer + input) is applied by ActivityManager via
+  // OrientationHelper before onEnter(), so no explicit setOrientation here.
 
   txt->setupCacheDir();
 
