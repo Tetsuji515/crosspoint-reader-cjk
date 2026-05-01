@@ -1,10 +1,10 @@
-#include "FontManager.h"
-
 #include <SDCardManager.h>
 
 #include <cstdlib>
 #include <iostream>
 #include <vector>
+
+#include "FontManager.h"
 
 namespace {
 

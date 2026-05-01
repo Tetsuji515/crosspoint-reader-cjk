@@ -1,11 +1,11 @@
-#include "ExternalFont.h"
-
 #include <SDCardManager.h>
 
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <vector>
+
+#include "ExternalFont.h"
 
 namespace {
 
@@ -48,8 +48,7 @@ int main() {
   expect(glyph != nullptr, "Expected fullwidth exclamation to fall back to ASCII glyph data");
 
   ExternalGlyphMetrics metrics{};
-  expect(font.getGlyphMetrics(0xFF01, &metrics),
-         "Expected cached metrics for fullwidth exclamation fallback glyph");
+  expect(font.getGlyphMetrics(0xFF01, &metrics), "Expected cached metrics for fullwidth exclamation fallback glyph");
   expect(metrics.left == 2, "Expected fallback glyph metrics to preserve ASCII left bearing");
   expect(metrics.advanceX == 3,
          "Expected fullwidth exclamation fallback to use ASCII narrow advance instead of fullwidth charWidth");

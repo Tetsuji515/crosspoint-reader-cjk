@@ -177,8 +177,7 @@ void FontManager::writeFontChoice(HalFile& file, const int index) const {
   }
 }
 
-void FontManager::readFontChoice(HalFile& file, const char* label, int& outIndex,
-                                 bool (FontManager::*loader)()) {
+void FontManager::readFontChoice(HalFile& file, const char* label, int& outIndex, bool (FontManager::*loader)()) {
   int savedIndex = -1;
   serialization::readPod(file, savedIndex);
 

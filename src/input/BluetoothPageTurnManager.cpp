@@ -13,8 +13,8 @@
 #include <algorithm>
 #include <cstring>
 
-#include "CrossPointSettings.h"
 #include "BluetoothPageTurnReportParser.h"
+#include "CrossPointSettings.h"
 
 namespace {
 constexpr uint16_t kHidServiceUuid = 0x1812;
@@ -254,8 +254,7 @@ void BluetoothPageTurnManager::forgetBondedDevice() {
 }
 
 void BluetoothPageTurnManager::updateRuntimeState() {
-  const bool shouldKeepRuntimeActive =
-      isEnabled() && (readerSessionActive || (settingsSessionActive && initialized));
+  const bool shouldKeepRuntimeActive = isEnabled() && (readerSessionActive || (settingsSessionActive && initialized));
   if (!shouldKeepRuntimeActive) {
     deactivateRuntime();
     return;
@@ -338,7 +337,9 @@ bool BluetoothPageTurnManager::isConnected() const {
   return client != nullptr && client->isConnected() && connectionState == ConnectionState::Connected;
 }
 
-BluetoothPageTurnManager::ConnectionState BluetoothPageTurnManager::getConnectionState() const { return connectionState; }
+BluetoothPageTurnManager::ConnectionState BluetoothPageTurnManager::getConnectionState() const {
+  return connectionState;
+}
 
 std::string BluetoothPageTurnManager::getStatusMessage() const { return statusMessage; }
 
@@ -355,7 +356,8 @@ void BluetoothPageTurnManager::handleScanResult(BLEAdvertisedDevice& advertisedD
   }
 
   ScannedDevice device;
-  device.name = advertisedDevice.haveName() ? advertisedDevice.getName().c_str() : advertisedDevice.getAddress().toString().c_str();
+  device.name = advertisedDevice.haveName() ? advertisedDevice.getName().c_str()
+                                            : advertisedDevice.getAddress().toString().c_str();
   device.address = advertisedDevice.getAddress().toString().c_str();
   device.rssi = advertisedDevice.haveRSSI() ? advertisedDevice.getRSSI() : 0;
   device.hasHidService =
@@ -378,9 +380,7 @@ void BluetoothPageTurnManager::handleScanResult(BLEAdvertisedDevice& advertisedD
   xSemaphoreGive(mutex);
 }
 
-void BluetoothPageTurnManager::handleClientConnected(BLEClient* connectedClient) {
-  client = connectedClient;
-}
+void BluetoothPageTurnManager::handleClientConnected(BLEClient* connectedClient) { client = connectedClient; }
 
 void BluetoothPageTurnManager::handleClientDisconnected() {
   subscriptionsActive = false;
@@ -419,8 +419,8 @@ bool BluetoothPageTurnManager::subscribeToInputReports() {
 #if defined(CONFIG_NIMBLE_ENABLED)
     subscribed =
         bootKeyboardInput->subscribe(true, [](BLERemoteCharacteristic*, const uint8_t* data, size_t length, bool) {
-      BluetoothPageTurnManager::getInstance().handleInputReport(data, length);
-    });
+          BluetoothPageTurnManager::getInstance().handleInputReport(data, length);
+        });
 #else
     bootKeyboardInput->registerForNotify([](BLERemoteCharacteristic*, const uint8_t* data, size_t length, bool) {
       BluetoothPageTurnManager::getInstance().handleInputReport(data, length);
@@ -437,10 +437,9 @@ bool BluetoothPageTurnManager::subscribeToInputReports() {
     }
 #if defined(CONFIG_NIMBLE_ENABLED)
     subscribed = characteristic->subscribe(true, [](BLERemoteCharacteristic*, const uint8_t* data, size_t length,
-                                                   bool) {
-                  BluetoothPageTurnManager::getInstance().handleInputReport(data, length);
-                }) ||
-                subscribed;
+                                                    bool) {
+      BluetoothPageTurnManager::getInstance().handleInputReport(data, length);
+    }) || subscribed;
 #else
     characteristic->registerForNotify([](BLERemoteCharacteristic*, const uint8_t* data, size_t length, bool) {
       BluetoothPageTurnManager::getInstance().handleInputReport(data, length);

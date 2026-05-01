@@ -65,9 +65,10 @@ void BluetoothPageTurnSettingsActivity::render(RenderLock&&) {
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
-  GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(menuItems.size()),
-               static_cast<int>(selectedIndex), [this](int index) { return getItemTitle(index); }, nullptr, nullptr,
-               [this](int index) { return getItemValue(index); }, true);
+  GUI.drawList(
+      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(menuItems.size()),
+      static_cast<int>(selectedIndex), [this](int index) { return getItemTitle(index); }, nullptr, nullptr,
+      [this](int index) { return getItemValue(index); }, true);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -107,10 +108,10 @@ bool BluetoothPageTurnSettingsActivity::refreshViewModel() {
   const std::string bondedDeviceName = BLUETOOTH_PAGE_TURN.getBondedDeviceName();
   const std::string bondedDeviceAddress = BLUETOOTH_PAGE_TURN.getBondedDeviceAddress();
 
-  const bool hasChanged = enabled != lastEnabled || hasBondedDevice != lastHasBondedDevice || connected != lastConnected ||
-                          scannedDeviceCount != lastScannedDeviceCount || connectionState != lastConnectionState ||
-                          statusMessage != lastStatusMessage || bondedDeviceName != lastBondedDeviceName ||
-                          bondedDeviceAddress != lastBondedDeviceAddress;
+  const bool hasChanged = enabled != lastEnabled || hasBondedDevice != lastHasBondedDevice ||
+                          connected != lastConnected || scannedDeviceCount != lastScannedDeviceCount ||
+                          connectionState != lastConnectionState || statusMessage != lastStatusMessage ||
+                          bondedDeviceName != lastBondedDeviceName || bondedDeviceAddress != lastBondedDeviceAddress;
 
   if (!hasChanged) {
     return false;

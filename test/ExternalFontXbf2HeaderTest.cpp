@@ -1,4 +1,4 @@
-#include "ExternalFont.h"
+#include <SDCardManager.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -6,7 +6,7 @@
 #include <iostream>
 #include <vector>
 
-#include <SDCardManager.h>
+#include "ExternalFont.h"
 
 namespace {
 
@@ -88,7 +88,8 @@ int main() {
   expect((metrics.flags & 0x01) == 0x01, "Expected XBF2 glyph metrics flags to include hasInk bit");
 
   ExternalGlyphMetrics metricsWideAdvance{};
-  expect(font.getGlyphMetrics(0x42, &metricsWideAdvance), "Expected getGlyphMetrics(0x42, &metricsWideAdvance) to succeed for XBF2 font");
+  expect(font.getGlyphMetrics(0x42, &metricsWideAdvance),
+         "Expected getGlyphMetrics(0x42, &metricsWideAdvance) to succeed for XBF2 font");
   expect(metricsWideAdvance.left == -2, "Expected XBF2 glyph metrics left to preserve negative bearings");
   expect(metricsWideAdvance.top == 10, "Expected XBF2 glyph metrics top to equal 10");
   expect(metricsWideAdvance.advanceX == 300, "Expected XBF2 glyph metrics advanceX to preserve full 16-bit value");
@@ -99,12 +100,14 @@ int main() {
   expect(glyph[0] == 0xAB, "Expected getGlyph(0) to read first glyph bytes after XBF2 header and metrics table");
 
   ExternalGlyphMetrics cachedMetrics{};
-  expect(font.getGlyphMetrics(0x41, &cachedMetrics), "Expected cached getGlyphMetrics(0x41, &cachedMetrics) to succeed for XBF2 font");
+  expect(font.getGlyphMetrics(0x41, &cachedMetrics),
+         "Expected cached getGlyphMetrics(0x41, &cachedMetrics) to succeed for XBF2 font");
 
   const uint8_t* nextGlyph = font.getGlyph(1);
   expect(nextGlyph != nullptr, "Expected getGlyph(1) to return second glyph data for XBF2 font");
   expect(nextGlyph[0] == 0xCD,
-         "Expected getGlyph(1) to seek to the second glyph after metrics lookup instead of reusing stale sequential read position");
+         "Expected getGlyph(1) to seek to the second glyph after metrics lookup instead of reusing stale sequential "
+         "read position");
 
   std::vector<uint8_t> invalidXbf2;
   appendBytes(invalidXbf2, {'X', 'B', 'F', '2'});

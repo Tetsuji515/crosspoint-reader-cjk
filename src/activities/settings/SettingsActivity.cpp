@@ -1,9 +1,10 @@
 #include "SettingsActivity.h"
 
-#include <cstdio>
 #include <FontManager.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
+
+#include <cstdio>
 
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
@@ -190,11 +191,12 @@ void SettingsActivity::toggleCurrentSetting() {
     }
     // Font Family: open FontSelectActivity (combined built-in + external fonts)
     if (setting.nameId == StrId::STR_FONT_FAMILY) {
-      startActivityForResult(std::make_unique<FontSelectActivity>(renderer, mappedInput, FontSelectActivity::SelectMode::Reader),
-                            [this](const ActivityResult&) {
-                              invalidateSectionPreservingPosition();
-                              requestUpdate();
-                            });
+      startActivityForResult(
+          std::make_unique<FontSelectActivity>(renderer, mappedInput, FontSelectActivity::SelectMode::Reader),
+          [this](const ActivityResult&) {
+            invalidateSectionPreservingPosition();
+            requestUpdate();
+          });
       return;
     }
     const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
@@ -263,10 +265,9 @@ void SettingsActivity::toggleCurrentSetting() {
                                [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::SelectUiFont:
-        startActivityForResult(std::make_unique<FontSelectActivity>(renderer, mappedInput, FontSelectActivity::SelectMode::UI),
-                               [this](const ActivityResult&) {
-                                 requestUpdate();
-                               });
+        startActivityForResult(
+            std::make_unique<FontSelectActivity>(renderer, mappedInput, FontSelectActivity::SelectMode::UI),
+            [this](const ActivityResult&) { requestUpdate(); });
         break;
       case SettingAction::None:
         // Do nothing
@@ -307,11 +308,12 @@ void SettingsActivity::render(RenderLock&&) {
   const auto& settings = *currentSettings;
   GUI.drawList(
       renderer,
-      Rect{0, metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing,
-           pageWidth,
-           pageHeight -
-               (metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.tabBarHeight +
-                metrics.buttonHintsHeight + metrics.verticalSpacing * 2)},
+      Rect{
+          0,
+          metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing,
+          pageWidth,
+          pageHeight - (metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.tabBarHeight +
+                        metrics.buttonHintsHeight + metrics.verticalSpacing * 2)},
       settingsCount, selectedSettingIndex - 1,
       [&settings](int index) { return std::string(I18N.get(settings[index].nameId)); }, nullptr, nullptr,
       [&settings](int i) {
@@ -327,7 +329,7 @@ void SettingsActivity::render(RenderLock&&) {
             valueText = info ? buildExternalFontLabel(info->filename, info->name, info->size,
                                                       ExternalFont::canFitGlyph(info->width, info->height))
                              : tr(STR_EXTERNAL_FONT);
-          // Font Size: show actual pixel size when external font is active
+            // Font Size: show actual pixel size when external font is active
           } else if (setting.nameId == StrId::STR_FONT_SIZE && FontMgr.getSelectedIndex() >= 0) {
             const FontInfo* info = FontMgr.getFontInfo(FontMgr.getSelectedIndex());
             valueText = info ? (std::to_string(info->size) + "pt") : "—";

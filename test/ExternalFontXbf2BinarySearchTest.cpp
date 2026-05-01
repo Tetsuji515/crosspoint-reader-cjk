@@ -1,5 +1,3 @@
-#include "ExternalFont.h"
-
 #include <SDCardManager.h>
 
 #include <cstdint>
@@ -7,6 +5,8 @@
 #include <initializer_list>
 #include <iostream>
 #include <vector>
+
+#include "ExternalFont.h"
 
 namespace {
 
@@ -41,7 +41,8 @@ void appendUint32(std::vector<uint8_t>& bytes, uint32_t value) {
 std::vector<uint8_t> makeSortedXbf2Font() {
   constexpr size_t kGlyphBytes = 12;
   constexpr size_t kBmpSlotCount = 0x10000;
-  constexpr uint32_t kCodepoints[] = {0x20, 0x30, 0x41, 0x42, 0x43, 0x50, 0x60, 0x70, 0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0};
+  constexpr uint32_t kCodepoints[] = {0x20, 0x30, 0x41, 0x42, 0x43, 0x50, 0x60, 0x70,
+                                      0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0};
 
   std::vector<uint8_t> xbf2;
   appendBytes(xbf2, {'X', 'B', 'F', '2'});
@@ -78,7 +79,8 @@ int main() {
 
   HostStorage::resetIoCounters();
   ExternalGlyphMetrics metrics{};
-  expect(font.getGlyphMetrics(0x70, &metrics), "Expected getGlyphMetrics() to find middle metrics entry in sorted XBF2 table");
+  expect(font.getGlyphMetrics(0x70, &metrics),
+         "Expected getGlyphMetrics() to find middle metrics entry in sorted XBF2 table");
   expect(metrics.left == 7, "Expected binary search test metrics left to match sorted entry");
   expect(metrics.top == 13, "Expected binary search test metrics top to match sorted entry");
   expect(metrics.advanceX == 107, "Expected binary search test metrics advanceX to match sorted entry");

@@ -37,7 +37,9 @@ class ParsedText {
  public:
   explicit ParsedText(const bool hyphenationEnabled = false, const BlockStyle& blockStyle = BlockStyle(),
                       const bool firstLineIndent = false, const bool extraParagraphSpacing = false)
-      : blockStyle(blockStyle), firstLineIndent(firstLineIndent), hyphenationEnabled(hyphenationEnabled),
+      : blockStyle(blockStyle),
+        firstLineIndent(firstLineIndent),
+        hyphenationEnabled(hyphenationEnabled),
         extraParagraphSpacing(extraParagraphSpacing) {}
   ~ParsedText() = default;
 

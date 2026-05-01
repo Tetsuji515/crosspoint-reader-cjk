@@ -35,11 +35,7 @@ bool hasAnyExtension(const std::string& path, std::string_view const* extensions
 }
 
 constexpr std::array<std::string_view, 5> kBookExtensions = {
-    ".epub",
-    ".xtc",
-    ".xtch",
-    ".txt",
-    ".md",
+    ".epub", ".xtc", ".xtch", ".txt", ".md",
 };
 
 constexpr std::array<std::string_view, 4> kViewableImageExtensions = {
@@ -56,7 +52,9 @@ constexpr std::array<std::string_view, 2> kFontExtensions = {
 
 }  // namespace
 
-bool isBookFile(const std::string& path) { return hasAnyExtension(path, kBookExtensions.data(), kBookExtensions.size()); }
+bool isBookFile(const std::string& path) {
+  return hasAnyExtension(path, kBookExtensions.data(), kBookExtensions.size());
+}
 
 bool isImageFile(const std::string& path) {
   return hasAnyExtension(path, kViewableImageExtensions.data(), kViewableImageExtensions.size());

@@ -9,7 +9,9 @@ class HalStorage {
     return instance;
   }
 
-  FsFile open(const char* path, const oflag_t oflag = O_RDONLY) { return SDCardManager::getInstance().open(path, oflag); }
+  FsFile open(const char* path, const oflag_t oflag = O_RDONLY) {
+    return SDCardManager::getInstance().open(path, oflag);
+  }
 
   bool mkdir(const char*, const bool = true) { return true; }
 

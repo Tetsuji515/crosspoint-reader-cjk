@@ -273,18 +273,17 @@ void EpubReaderActivity::onGoToPercent() {
   }
   const int initialPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
 
-  startActivityForResult(
-      std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
-      [this](const ActivityResult& percentResult) {
-        if (!percentResult.isCancelled) {
-          auto* percentData = std::get_if<PercentResult>(&percentResult.data);
-          if (percentData) {
-            jumpToPercent(percentData->percent);
-          }
-        }
-        skipNextButtonCheck = true;
-        requestUpdate();
-      });
+  startActivityForResult(std::make_unique<EpubReaderPercentSelectionActivity>(renderer, mappedInput, initialPercent),
+                         [this](const ActivityResult& percentResult) {
+                           if (!percentResult.isCancelled) {
+                             auto* percentData = std::get_if<PercentResult>(&percentResult.data);
+                             if (percentData) {
+                               jumpToPercent(percentData->percent);
+                             }
+                           }
+                           skipNextButtonCheck = true;
+                           requestUpdate();
+                         });
 }
 
 void EpubReaderActivity::onReaderSettings() {
@@ -639,8 +638,8 @@ bool EpubReaderActivity::loadOrBuildSection(const int orientedMarginTop, const i
           lineCompression, viewportWidth, viewportHeight);
 
   if (!section->loadSectionFile(SETTINGS.getReaderFontId(), lineCompression, SETTINGS.extraParagraphSpacing,
-                                SETTINGS.paragraphAlignment, viewportWidth, viewportHeight,
-                                SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle, 0)) {
+                                SETTINGS.paragraphAlignment, viewportWidth, viewportHeight, SETTINGS.hyphenationEnabled,
+                                SETTINGS.embeddedStyle, 0)) {
     LOG_DBG("ERS", "Cache not found, building...");
 
     const auto popupFn = std::function<void()>([this]() { GUI.drawPopup(renderer, tr(STR_INDEXING)); });
@@ -671,8 +670,7 @@ bool EpubReaderActivity::loadOrBuildSection(const int orientedMarginTop, const i
   if (cachedChapterTotalPageCount > 0) {
     // only goes to relative position if spine index matches cached value
     if (currentSpineIndex == cachedSpineIndex && section->pageCount != cachedChapterTotalPageCount) {
-      const float progress =
-          static_cast<float>(section->currentPage) / static_cast<float>(cachedChapterTotalPageCount);
+      const float progress = static_cast<float>(section->currentPage) / static_cast<float>(cachedChapterTotalPageCount);
       const int newPage = static_cast<int>(progress * section->pageCount);
       section->currentPage = newPage;
     }
