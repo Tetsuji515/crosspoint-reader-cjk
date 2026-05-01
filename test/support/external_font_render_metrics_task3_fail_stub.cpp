@@ -1,4 +1,4 @@
-#include "ExternalFontRenderMetrics.h"
+#include "ExternalFontHelpers.h"
 
 int getExternalFontAscenderForRendering(const ExternalFont& font) { return font.getCharHeight(); }
 

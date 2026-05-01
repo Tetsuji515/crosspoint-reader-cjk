@@ -1,5 +1,3 @@
-#include "ExternalAdvance.h"
-
 #include <SDCardManager.h>
 
 #include <cstdint>
@@ -7,6 +5,8 @@
 #include <initializer_list>
 #include <iostream>
 #include <vector>
+
+#include "ExternalFontHelpers.h"
 
 namespace {
 

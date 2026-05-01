@@ -1,4 +1,4 @@
-#include "ExternalGlyphLayout.h"
+#include "ExternalFontHelpers.h"
 
 ExternalGlyphLayout computeExternalGlyphLayout(int cursorX, int lineTopY, const ExternalFont& font,
                                                const ExternalGlyphMetrics& metrics, int advanceOverride) {

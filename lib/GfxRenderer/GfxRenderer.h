@@ -12,7 +12,7 @@ class FontDecompressor;
 #include <vector>
 
 #include "Bitmap.h"
-#include "ExternalGlyphLayout.h"
+#include "ExternalFontHelpers.h"
 
 // Forward declaration for external font support
 class ExternalFont;
@@ -71,6 +71,11 @@ class GfxRenderer {
 
   void renderChar(int fontId, const EpdFontFamily& fontFamily, uint32_t cp, int* x, const int* y, bool pixelState,
                   EpdFontFamily::Style style) const;
+  // renderChar() helpers. Each returns true if the glyph was rendered (caller
+  // should stop), false to fall through to the next strategy / EPD fallback.
+  bool renderCharReader(uint32_t cp, int* x, const int* y, bool pixelState, bool isCjk) const;
+  bool renderCharUiCjk(uint32_t cp, int* x, const int* y, bool pixelState) const;
+  bool renderCharUiNonCjk(uint32_t cp, int* x, const int* y, bool pixelState) const;
   void renderExternalGlyph(const uint8_t* bitmap, ExternalFont* font, int* x, int lineTopY, bool pixelState,
                            const ExternalGlyphMetrics& metrics, int advanceOverride = -1) const;
   // Render CJK character using built-in UI font (from PROGMEM)
@@ -79,6 +84,17 @@ class GfxRenderer {
   static bool isReaderFont(int fontId);
   // Get effective font ID, handling fallback for external reader font IDs
   int getEffectiveFontId(int fontId) const;
+  // Returns the configured per-character spacing for ASCII digits/letters,
+  // or 0 for any other codepoint.
+  int getAsciiSpacing(uint32_t cp) const;
+
+  // getTextWidth() helpers, each handling one rendering path.
+  // Returns measured width in pixels.
+  int getTextWidthUiOnly(const char* text) const;
+  int getTextWidthExternalReader(int effectiveFontId, const char* text, EpdFontFamily::Style style) const;
+  // Returns -1 when the text doesn't need CJK/external UI handling
+  // (caller should fall back to fontMap.getTextDimensions()).
+  int getTextWidthUiMixed(int effectiveFontId, const char* text, EpdFontFamily::Style style) const;
   void freeBwBufferChunks();
   template <Color color>
   void drawPixelDither(int x, int y) const;

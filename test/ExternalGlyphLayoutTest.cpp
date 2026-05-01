@@ -1,5 +1,3 @@
-#include "ExternalGlyphLayout.h"
-
 #include <SDCardManager.h>
 
 #include <cstddef>
@@ -8,6 +6,8 @@
 #include <initializer_list>
 #include <iostream>
 #include <vector>
+
+#include "ExternalFontHelpers.h"
 
 namespace {
 
@@ -88,7 +88,8 @@ int main() {
   negativeBearingMetrics.left = -4;
   negativeBearingMetrics.top = 7;
   negativeBearingMetrics.advanceX = 300;
-  const ExternalGlyphLayout wideAdvanceLayout = computeExternalGlyphLayout(cursorX, baselineY, font, negativeBearingMetrics);
+  const ExternalGlyphLayout wideAdvanceLayout =
+      computeExternalGlyphLayout(cursorX, baselineY, font, negativeBearingMetrics);
   expect(wideAdvanceLayout.drawX == 26, "Expected drawX to preserve negative left bearing");
   expect(wideAdvanceLayout.drawY == 52, "Expected drawY = baselineY - top for alternate metrics");
   expect(wideAdvanceLayout.advanceX == 300, "Expected layout advanceX to preserve full 16-bit glyph advance");
