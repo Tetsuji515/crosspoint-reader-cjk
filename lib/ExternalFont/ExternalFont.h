@@ -127,10 +127,10 @@ class ExternalFont {
     uint32_t codepoint = 0xFFFFFFFF;  // Invalid marker
     uint8_t bitmap[MAX_GLYPH_BYTES];
     uint32_t lastUsed = 0;
-    bool notFound = false;               // True if glyph doesn't exist in font
-    ExternalGlyphMetrics metrics = {};   // Cached rendering metrics
+    bool notFound = false;              // True if glyph doesn't exist in font
+    ExternalGlyphMetrics metrics = {};  // Cached rendering metrics
   };
-  CacheEntry* _cache = nullptr;       // Dynamically allocated on load()
+  CacheEntry* _cache = nullptr;  // Dynamically allocated on load()
   uint32_t _accessCounter = 0;
 
   // Sequential read fast path - skip seek if reading consecutive glyphs
@@ -139,7 +139,7 @@ class ExternalFont {
 
   // Simple hash table for O(1) cache lookup (codepoint -> cache index, -1 if
   // not cached)
-  int16_t* _hashTable = nullptr;      // Dynamically allocated on load()
+  int16_t* _hashTable = nullptr;  // Dynamically allocated on load()
   static int hashCodepoint(uint32_t cp) { return cp % CACHE_SIZE; }
 
   /**

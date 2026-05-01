@@ -7,6 +7,8 @@
 #include <cstring>
 #include <vector>
 
+#include "FontFilenameParser.h"
+
 namespace {
 
 constexpr uint8_t XBF2_MAGIC[4] = {'X', 'B', 'F', '2'};
@@ -57,66 +59,17 @@ void ExternalFont::unload() {
 }
 
 bool ExternalFont::parseFilename(const char* filepath) {
-  // Extract filename from path
-  const char* filename = strrchr(filepath, '/');
-  if (filename) {
-    filename++;  // Skip '/'
-  } else {
-    filename = filepath;
-  }
-
-  // Parse format: FontName_size_WxH.bin
-  // Example: KingHwaOldSong_38_33x39.bin
-
-  char nameCopy[64];
-  strncpy(nameCopy, filename, sizeof(nameCopy) - 1);
-  nameCopy[sizeof(nameCopy) - 1] = '\0';
-
-  // Remove supported extension (.bin legacy font or .xbf2 rich-metrics font)
-  char* ext = strstr(nameCopy, ".bin");
-  if (!ext) {
-    ext = strstr(nameCopy, ".xbf2");
-  }
-  if (!ext) {
-    LOG_ERR("EFT", "Invalid filename: unsupported extension (expected .bin or .xbf2)");
-    return false;
-  }
-  *ext = '\0';
-
-  // Find _WxH part from the end
-  char* lastUnderscore = strrchr(nameCopy, '_');
-  if (!lastUnderscore) {
-    LOG_ERR("EFT", "Invalid filename format");
+  // Format: FontName_size_WxH.bin (legacy) or FontName_size_WxH.xbf2 (rich).
+  ParsedFontFilename parsed;
+  if (!parseFontFilename(filepath, parsed)) {
+    LOG_ERR("EFT", "Invalid font filename: %s", filepath ? filepath : "(null)");
     return false;
   }
 
-  // Parse WxH
-  int w, h;
-  if (sscanf(lastUnderscore + 1, "%dx%d", &w, &h) != 2) {
-    LOG_ERR("EFT", "Failed to parse dimensions");
-    return false;
-  }
-  _charWidth = (uint8_t)w;
-  _charHeight = (uint8_t)h;
-  *lastUnderscore = '\0';
-
-  // Find size
-  lastUnderscore = strrchr(nameCopy, '_');
-  if (!lastUnderscore) {
-    LOG_ERR("EFT", "Invalid filename format: no size");
-    return false;
-  }
-
-  int size;
-  if (sscanf(lastUnderscore + 1, "%d", &size) != 1) {
-    LOG_ERR("EFT", "Failed to parse size");
-    return false;
-  }
-  _fontSize = (uint8_t)size;
-  *lastUnderscore = '\0';
-
-  // Remaining part is font name
-  strncpy(_fontName, nameCopy, sizeof(_fontName) - 1);
+  _charWidth = parsed.width;
+  _charHeight = parsed.height;
+  _fontSize = parsed.size;
+  strncpy(_fontName, parsed.name, sizeof(_fontName) - 1);
   _fontName[sizeof(_fontName) - 1] = '\0';
 
   // Calculate bytes per char
@@ -128,8 +81,8 @@ bool ExternalFont::parseFilename(const char* filepath) {
     return false;
   }
 
-  LOG_DBG("EFT", "Parsed: name=%s, size=%d, %dx%d, %d bytes/char", _fontName, _fontSize, _charWidth,
-          _charHeight, _bytesPerChar);
+  LOG_DBG("EFT", "Parsed: name=%s, size=%d, %dx%d, %d bytes/char", _fontName, _fontSize, _charWidth, _charHeight,
+          _bytesPerChar);
 
   return true;
 }
@@ -181,7 +134,8 @@ bool ExternalFont::load(const char* filepath) {
   _cache = new (std::nothrow) CacheEntry[CACHE_SIZE];
   _hashTable = new (std::nothrow) int16_t[CACHE_SIZE];
   if (!_cache || !_hashTable) {
-    LOG_ERR("EFT", "Failed to allocate glyph cache (%d bytes)", static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t))));
+    LOG_ERR("EFT", "Failed to allocate glyph cache (%d bytes)",
+            static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t))));
     delete[] _cache;
     _cache = nullptr;
     delete[] _hashTable;
@@ -408,11 +362,10 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
     _cache[slot].metrics.top = _charHeight;
     // CJK/fullwidth chars: use charWidth (= font-defined character spacing)
     // Latin/narrow chars: use content width + 2px padding, capped at charWidth
-    const bool isFullwidth =
-        (actualCodepoint >= 0x2E80 && actualCodepoint <= 0x9FFF) ||
-        (actualCodepoint >= 0x3000 && actualCodepoint <= 0x30FF) ||
-        (actualCodepoint >= 0xF900 && actualCodepoint <= 0xFAFF) ||
-        (actualCodepoint >= 0xFF00 && actualCodepoint <= 0xFF60);
+    const bool isFullwidth = (actualCodepoint >= 0x2E80 && actualCodepoint <= 0x9FFF) ||
+                             (actualCodepoint >= 0x3000 && actualCodepoint <= 0x30FF) ||
+                             (actualCodepoint >= 0xF900 && actualCodepoint <= 0xFAFF) ||
+                             (actualCodepoint >= 0xFF00 && actualCodepoint <= 0xFF60);
     if (isFullwidth) {
       _cache[slot].metrics.advanceX = _charWidth;
     } else {
@@ -526,6 +479,5 @@ void ExternalFont::preloadGlyphs(const uint32_t* codepoints, size_t count) {
     loaded++;
   }
 
-  LOG_DBG("EFT", "Preload done: %zu loaded, %zu already cached, took %lums", loaded, skipped,
-          millis() - startTime);
+  LOG_DBG("EFT", "Preload done: %zu loaded, %zu already cached, took %lums", loaded, skipped, millis() - startTime);
 }

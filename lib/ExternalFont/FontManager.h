@@ -4,6 +4,8 @@
 
 #include "ExternalFont.h"
 
+class HalFile;
+
 /**
  * Font information structure
  */
@@ -146,6 +148,15 @@ class FontManager {
    * Load selected UI font file
    */
   bool loadSelectedUiFont();
+
+  /// Writes (index, filename) for the font at `index` to `file`. Used by
+  /// saveSettings() for both the reader and UI font slots.
+  void writeFontChoice(HalFile& file, int index) const;
+
+  /// Reads (savedIndex, savedFilename) from `file`, finds the matching font in
+  /// the scanned list, sets `outIndex` and invokes `loader`. `label` is used
+  /// for logging only ("reader" or "UI").
+  void readFontChoice(HalFile& file, const char* label, int& outIndex, bool (FontManager::*loader)());
 };
 
 // Convenience macro
