@@ -22,14 +22,18 @@
 //          |------------------------|----------|-------------|--------------|
 //          | Back / Confirm         | mirror   |    —        |     —        |
 //          | Left / Right           | mirror   |    —        |  swap roles  |
-//          | Up / Down              | swap     |    —        |     —        |
-//          | PageBack / PageForward | swap     |   swap      |   swap       |
+//          | Up / Down              | (table)  |   (table)   |   (table)    |
+//          | PageBack / PageForward | (table)  |   (table)   |   (table)    |
 //          | Power                  |    —     |    —        |     —        |
 //
 //      "mirror" = front-bezel hw index 0..3 is reflected (3 - i).
-//      "swap"   = the user's prev/next polarity is inverted at the call site.
+//      "swap"   = the BTN_UP / BTN_DOWN hardware names are exchanged.
 //      "swap roles" = the role looked up in SETTINGS is the opposite arrow
 //      (Left looks up Right, Right looks up Left), without an index mirror.
+//      "(table)" = PageBack/PageForward use kPageBackHwByOrientation, an
+//      empirically-derived per-orientation table (see comment by the table
+//      definition). The user's SIDE_BUTTON_LAYOUT setting then applies a
+//      uniform global flip to every entry.
 //
 // Each rule is documented next to the corresponding case below so the
 // behaviour can be audited without reading the whole file.
@@ -48,21 +52,42 @@ using Orientation = MappedInputManager::Orientation;
 // portrait, ordered top-to-bottom. ADC channel naming != physical position:
 //   BTN_DOWN(5) is the physical UPPER button.
 //   BTN_UP(4)   is the physical LOWER button.
-constexpr ButtonIndex kSideUpper = HalGPIO::BTN_DOWN;
-constexpr ButtonIndex kSideLower = HalGPIO::BTN_UP;
+// (We refer to them by HalGPIO name in the side-strip code below; the
+// kPageBackHwByOrientation table encodes the per-orientation mapping
+// directly so we don't need named "upper"/"lower" aliases.)
 
 // === Side polarity (user-configurable) ===
 //
-// In PORTRAIT orientation, which physical side button is "previous" and
-// which is "next". Indexed by CrossPointSettings::SIDE_BUTTON_LAYOUT.
-struct SidePolarity {
-  ButtonIndex prev;
-  ButtonIndex next;
+// `kPageBackHwByOrientation` is the empirically-validated table of which
+// physical side button on the X4 the user perceives as "previous page" in
+// each orientation. Each rotation maps the right-edge side strip onto a
+// different physical edge of the device:
+//
+//   Portrait                   — strip on right edge,  prev = BTN_UP   (lower of right edge)
+//   PortraitInverted           — strip on left edge,   prev = BTN_DOWN (now lower of left edge)
+//   LandscapeClockwise         — strip on bottom edge, prev = BTN_DOWN (now bottom-right)
+//   LandscapeCounterClockwise  — strip on top edge,    prev = BTN_UP   (now top-right)
+//
+// This is asymmetric (Portrait + LandscapeCCW pick BTN_UP; the other two
+// pick BTN_DOWN) because the X4's right-edge strip lands at the user's
+// natural-thumb side in those two orientations, and on the opposite side
+// in the other two. Validated against on-device button presses.
+//
+// Users who prefer the opposite mapping in every orientation can toggle
+// SIDE_BUTTON_LAYOUT in settings; that flips every entry of this table
+// uniformly via `flipSideButton`.
+constexpr ButtonIndex kPageBackHwByOrientation[] = {
+    HalGPIO::BTN_UP,    // Portrait
+    HalGPIO::BTN_DOWN,  // PortraitInverted
+    HalGPIO::BTN_DOWN,  // LandscapeClockwise
+    HalGPIO::BTN_UP,    // LandscapeCounterClockwise
 };
-constexpr SidePolarity kSidePolarities[] = {
-    {kSideUpper, kSideLower},  // PREV_NEXT: upper = prev, lower = next
-    {kSideLower, kSideUpper},  // NEXT_PREV: reversed
-};
+static_assert(sizeof(kPageBackHwByOrientation) / sizeof(ButtonIndex) == 4,
+              "kPageBackHwByOrientation must cover every Orientation enum value");
+
+constexpr ButtonIndex flipSideButton(ButtonIndex hw) {
+  return hw == HalGPIO::BTN_UP ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
+}
 
 // === Helpers ===
 //
@@ -98,7 +123,14 @@ constexpr ButtonIndex frontHwForRole(ButtonIndex roleIndex, Orientation o) {
 bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
   const Orientation o = effectiveOrientation;
   const auto layout = static_cast<CrossPointSettings::SIDE_BUTTON_LAYOUT>(SETTINGS.sideButtonLayout);
-  const SidePolarity& polarity = kSidePolarities[layout];
+
+  // Resolve the side-strip "previous" hardware index for the active
+  // orientation, applying the user's polarity flip if SIDE_BUTTON_LAYOUT
+  // is set to NEXT_PREV.
+  const ButtonIndex defaultPrev = kPageBackHwByOrientation[static_cast<size_t>(o)];
+  const ButtonIndex sidePrevHw =
+      layout == CrossPointSettings::SIDE_BUTTON_LAYOUT::NEXT_PREV ? flipSideButton(defaultPrev) : defaultPrev;
+  const ButtonIndex sideNextHw = flipSideButton(sidePrevHw);
 
   switch (button) {
     // === Front-bezel action buttons =====================================
@@ -129,30 +161,30 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
 
     // === Side-strip vertical (Up / Down) ================================
     // Used by ButtonNavigator as side-key alternatives to Left/Right for
-    // chapter / menu navigation. Mapped by HARDWARE NAME (BTN_UP /
-    // BTN_DOWN) rather than physical position, swapped only on the
-    // device-flipped (Inverted) orientation. Landscape rotations don't
-    // remap because chapter list logic treats them as direction-agnostic
-    // alternates that move with the strip.
+    // chapter / menu navigation. Up = "scroll up the list" = same physical
+    // button as PageBack; Down = same as PageForward. Both follow the
+    // per-orientation kPageBackHwByOrientation table so the side button
+    // physically nearest the user's natural-thumb position always performs
+    // the "previous" direction in every orientation, mirroring reader
+    // paging. Required for the chapter list to feel consistent in
+    // landscape rotations (CW was the orientation that exposed this; the
+    // previous "swap on Inverted only" rule misfired there).
     case Button::Up:
-      return (gpio.*fn)(isInverted(o) ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP);
+      return (gpio.*fn)(sidePrevHw);
     case Button::Down:
-      return (gpio.*fn)(isInverted(o) ? HalGPIO::BTN_UP : HalGPIO::BTN_DOWN);
+      return (gpio.*fn)(sideNextHw);
 
     // === Reader paging (PageBack / PageForward) =========================
-    // Use the user's prev/next polarity, with the polarity inverted in
-    // every non-portrait orientation so the side button visually closer
-    // to the start-of-line stays mapped to "previous":
-    //   - Inverted             — device flipped 180°, top↔bottom swapped.
-    //   - LandscapeClockwise   — empirically validated by 78154ba.
-    //   - LandscapeCCW         — empirically validated by fc63d2e.
-    // Users who want a different mapping should toggle SIDE_BUTTON_LAYOUT
-    // (PREV_NEXT ↔ NEXT_PREV) in settings.
+    // Driven by the `kPageBackHwByOrientation` table at the top of this
+    // file: each orientation has its own empirically-validated answer for
+    // which physical side button is "previous" on this user's X4 unit.
+    // The user's SIDE_BUTTON_LAYOUT setting (PREV_NEXT / NEXT_PREV) then
+    // applies a uniform global flip, in case they prefer the opposite
+    // mapping in every orientation.
     case Button::PageBack:
-    case Button::PageBack:
-      return (gpio.*fn)(o == Orientation::Portrait ? polarity.prev : polarity.next);
+      return (gpio.*fn)(sidePrevHw);
     case Button::PageForward:
-      return (gpio.*fn)(o == Orientation::Portrait ? polarity.next : polarity.prev);
+      return (gpio.*fn)(sideNextHw);
 
     // === Power ==========================================================
     case Button::Power:
