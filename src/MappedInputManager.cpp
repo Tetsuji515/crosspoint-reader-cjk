@@ -75,52 +75,35 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
   return false;
 }
 
-bool MappedInputManager::wasPressed(const Button button) const {
-  const bool physicalPressed = mapButton(button, &HalGPIO::wasPressed);
+bool MappedInputManager::checkButton(const Button button, const GpioFn gpioFn, const BtFn btPageBackFn,
+                                     const BtFn btPageForwardFn) const {
+  const bool physical = mapButton(button, gpioFn);
   if (!bluetoothPageTurnState) {
-    return physicalPressed;
+    return physical;
   }
-
   switch (button) {
     case Button::PageBack:
-      return physicalPressed || bluetoothPageTurnState->wasPageBackPressed();
+      return physical || (bluetoothPageTurnState->*btPageBackFn)();
     case Button::PageForward:
-      return physicalPressed || bluetoothPageTurnState->wasPageForwardPressed();
+      return physical || (bluetoothPageTurnState->*btPageForwardFn)();
     default:
-      return physicalPressed;
+      return physical;
   }
+}
+
+bool MappedInputManager::wasPressed(const Button button) const {
+  return checkButton(button, &HalGPIO::wasPressed, &BluetoothPageTurnState::wasPageBackPressed,
+                     &BluetoothPageTurnState::wasPageForwardPressed);
 }
 
 bool MappedInputManager::wasReleased(const Button button) const {
-  const bool physicalReleased = mapButton(button, &HalGPIO::wasReleased);
-  if (!bluetoothPageTurnState) {
-    return physicalReleased;
-  }
-
-  switch (button) {
-    case Button::PageBack:
-      return physicalReleased || bluetoothPageTurnState->wasPageBackReleased();
-    case Button::PageForward:
-      return physicalReleased || bluetoothPageTurnState->wasPageForwardReleased();
-    default:
-      return physicalReleased;
-  }
+  return checkButton(button, &HalGPIO::wasReleased, &BluetoothPageTurnState::wasPageBackReleased,
+                     &BluetoothPageTurnState::wasPageForwardReleased);
 }
 
 bool MappedInputManager::isPressed(const Button button) const {
-  const bool physicalPressed = mapButton(button, &HalGPIO::isPressed);
-  if (!bluetoothPageTurnState) {
-    return physicalPressed;
-  }
-
-  switch (button) {
-    case Button::PageBack:
-      return physicalPressed || bluetoothPageTurnState->isPageBackPressed();
-    case Button::PageForward:
-      return physicalPressed || bluetoothPageTurnState->isPageForwardPressed();
-    default:
-      return physicalPressed;
-  }
+  return checkButton(button, &HalGPIO::isPressed, &BluetoothPageTurnState::isPageBackPressed,
+                     &BluetoothPageTurnState::isPageForwardPressed);
 }
 
 bool MappedInputManager::wasAnyPressed() const {

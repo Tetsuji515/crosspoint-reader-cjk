@@ -37,9 +37,15 @@ class MappedInputManager {
   void setEffectiveOrientation(Orientation o) { effectiveOrientation = o; }
 
  private:
+  using GpioFn = bool (HalGPIO::*)(uint8_t) const;
+  using BtFn = bool (BluetoothPageTurnState::*)() const;
+
   HalGPIO& gpio;
   const BluetoothPageTurnState* bluetoothPageTurnState = nullptr;
   Orientation effectiveOrientation = Orientation::Portrait;
 
-  bool mapButton(Button button, bool (HalGPIO::*fn)(uint8_t) const) const;
+  bool mapButton(Button button, GpioFn fn) const;
+  // Returns the physical state for `button` and ORs in the matching
+  // Bluetooth page-turn state when applicable.
+  bool checkButton(Button button, GpioFn gpioFn, BtFn btPageBackFn, BtFn btPageForwardFn) const;
 };

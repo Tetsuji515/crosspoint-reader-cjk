@@ -26,12 +26,33 @@ class EpubReaderActivity final : public Activity {
                       int orientedMarginBottom, int orientedMarginLeft);
   void renderStatusBar() const;
   void saveProgress(int spineIndex, int currentPage, int pageCount);
+  // Loads the current spine item into `section`, building the cache if necessary,
+  // and applies any pending percent/cached-progress jumps. Returns false when an
+  // error path was already drawn (caller must return without rendering further).
+  bool loadOrBuildSection(int orientedMarginTop, int orientedMarginRight, int orientedMarginBottom,
+                          int orientedMarginLeft);
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
   void invalidateSectionPreservingPosition();
   void applyOrientation(uint8_t orientation);
   void showReaderMenu();
   void handleMenuResult(const ActivityResult& result);
+
+  // Per-action menu handlers. Each handles one EpubReaderMenuActivity::MenuAction
+  // case so handleMenuResult() stays a thin dispatcher.
+  void onSelectChapter();
+  void onGoToPercent();
+  void onReaderSettings();
+  void onToggleFirstLineIndent();
+  void onToggleInvertImages();
+  void onChangeFontFamily();
+  void onChangeLineSpacing();
+  void onStatusBarSettings();
+  void onDisplayQr();
+  void onGoHome();
+  void onDeleteCache();
+  void onScreenshot();
+  void onSync();
 
  public:
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Epub> epub)
