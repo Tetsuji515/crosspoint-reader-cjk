@@ -88,6 +88,13 @@ void ActivityManager::loop() {
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
 
+        // Apply screen+input orientation for the activity that's coming back
+        // to the foreground. Each activity decides via supportsLandscape()
+        // whether it wants the configured Landscape orientation or stays in
+        // Portrait/Inverted, so popping from a Portrait UI subactivity back
+        // to a Landscape reader correctly switches the rotation here.
+        OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
+
         // Handle result if necessary
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
@@ -112,11 +119,6 @@ void ActivityManager::loop() {
       // Current activity has requested a new activity to be launched
       RenderLock lock;
 
-      // Cache action since we clear pendingAction below before deciding whether
-      // to apply orientation. Replace = fresh navigation (apply); Push =
-      // subactivity inherits parent's orientation (skip).
-      const bool isReplace = (pendingAction == PendingAction::Replace);
-
       if (pendingAction == PendingAction::Replace) {
         // Destroy the current activity
         exitActivity(lock);
@@ -135,11 +137,12 @@ void ActivityManager::loop() {
 
       lock.unlock();  // onEnter may acquire its own lock
       // Apply screen+input orientation BEFORE onEnter so the activity's
-      // onEnter / first render see the correct orientation. Subactivities
-      // pushed from a reader keep the parent's landscape orientation.
-      if (isReplace) {
-        OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
-      }
+      // onEnter / first render see the correct orientation. Each activity
+      // decides via supportsLandscape() whether to use the configured
+      // Landscape orientation or stay Portrait/Inverted; UI subactivities
+      // pushed from a Landscape reader therefore switch to Portrait, and
+      // popping back rotates the reader to its configured orientation.
+      OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
       currentActivity->onEnter();
 
       // onEnter may request another pending action, we will handle it in the next loop iteration

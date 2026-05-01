@@ -48,8 +48,8 @@ void TxtReaderActivity::onEnter() {
 void TxtReaderActivity::onExit() {
   Activity::onExit();
 
-  // Reset orientation back to portrait for the rest of the UI
-  renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+  // ActivityManager applies the next activity's orientation on Pop/Replace,
+  // so we don't need to manually reset the renderer here.
 
   pageOffsets.clear();
   currentPageLines.clear();

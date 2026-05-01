@@ -41,7 +41,8 @@ class KOReaderSyncActivity final : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return state == CONNECTING || state == SYNCING; }
-  bool supportsLandscape() const override { return true; }
+  // Sync screen is UI, not book content — keep it Portrait/Inverted even when
+  // the user has configured the EPUB reader to render in Landscape.
   bool isReaderActivity() const override { return true; }
 
  private:
