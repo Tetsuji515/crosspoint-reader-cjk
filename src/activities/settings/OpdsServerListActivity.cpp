@@ -98,7 +98,7 @@ void OpdsServerListActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_OPDS_SERVERS));
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+  const Rect contentRect = GUI.getContentRect(renderer, contentTop, metrics.verticalSpacing * 2);
   const int itemCount = getItemCount();
 
   if (itemCount == 0) {
@@ -110,7 +110,7 @@ void OpdsServerListActivity::render(RenderLock&&) {
     // Primary label: server name (falling back to URL if unnamed).
     // Secondary label: server URL (shown as subtitle when name is set).
     GUI.drawList(
-        renderer, Rect{0, contentTop, pageWidth, contentHeight}, itemCount, selectedIndex,
+        renderer, contentRect, itemCount, selectedIndex,
         [&servers, serverCount](int index) {
           if (index < serverCount) {
             const auto& server = servers[index];

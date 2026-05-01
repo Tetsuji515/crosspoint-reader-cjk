@@ -306,16 +306,12 @@ void SettingsActivity::render(RenderLock&&) {
                  tabs, selectedSettingIndex == 0);
 
   const auto& settings = *currentSettings;
+  const int settingsListTop =
+      metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing;
   GUI.drawList(
-      renderer,
-      Rect{
-          0,
-          metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing,
-          pageWidth,
-          pageHeight - (metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.tabBarHeight +
-                        metrics.buttonHintsHeight + metrics.verticalSpacing * 2)},
-      settingsCount, selectedSettingIndex - 1,
-      [&settings](int index) { return std::string(I18N.get(settings[index].nameId)); }, nullptr, nullptr,
+      renderer, GUI.getContentRect(renderer, settingsListTop, metrics.verticalSpacing * 2), settingsCount,
+      selectedSettingIndex - 1, [&settings](int index) { return std::string(I18N.get(settings[index].nameId)); },
+      nullptr, nullptr,
       [&settings](int i) {
         const auto& setting = settings[i];
         std::string valueText = "";

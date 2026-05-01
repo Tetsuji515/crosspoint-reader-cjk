@@ -157,10 +157,10 @@ void FontSelectActivity::render(RenderLock&&) {
 
   // Font list
   const int contentTop = metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
+  const Rect contentRect = GUI.getContentRect(renderer, contentTop, metrics.verticalSpacing);
 
   GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, totalItems, selectedIndex,
+      renderer, contentRect, totalItems, selectedIndex,
       [this](int i) -> std::string {
         if (mode == SelectMode::Reader) {
           if (i < kBuiltinReaderFontCount) {

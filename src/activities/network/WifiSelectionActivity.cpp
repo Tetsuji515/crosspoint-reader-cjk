@@ -527,10 +527,10 @@ void WifiSelectionActivity::renderNetworkList() const {
     renderer.drawCenteredText(SMALL_FONT_ID, top + height + 10, tr(STR_PRESS_OK_SCAN));
   } else {
     int contentTop = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing;
-    int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+    const Rect contentRect = GUI.getContentRect(renderer, contentTop, metrics.verticalSpacing * 2);
     GUI.drawList(
-        renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(networks.size()),
-        selectedNetworkIndex, [this](int index) { return networks[index].ssid; }, nullptr, nullptr,
+        renderer, contentRect, static_cast<int>(networks.size()), selectedNetworkIndex,
+        [this](int index) { return networks[index].ssid; }, nullptr, nullptr,
         [this](int index) {
           auto network = networks[index];
           return std::string(network.hasSavedPassword ? "+ " : "") + (network.isEncrypted ? "* " : "") +

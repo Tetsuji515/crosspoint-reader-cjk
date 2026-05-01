@@ -64,10 +64,10 @@ void BluetoothPageTurnSettingsActivity::render(RenderLock&&) {
                     statusText.c_str(), statusDetail.empty() ? nullptr : statusDetail.c_str());
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+  const Rect contentRect = GUI.getContentRect(renderer, contentTop, metrics.verticalSpacing * 2);
   GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(menuItems.size()),
-      static_cast<int>(selectedIndex), [this](int index) { return getItemTitle(index); }, nullptr, nullptr,
+      renderer, contentRect, static_cast<int>(menuItems.size()), static_cast<int>(selectedIndex),
+      [this](int index) { return getItemTitle(index); }, nullptr, nullptr,
       [this](int index) { return getItemValue(index); }, true);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));

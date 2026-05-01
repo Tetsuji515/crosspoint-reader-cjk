@@ -115,9 +115,9 @@ void ButtonRemapActivity::render(RenderLock&&) {
                     tr(STR_REMAP_PROMPT));
 
   int topOffset = metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight + metrics.verticalSpacing;
-  int contentHeight = pageHeight - topOffset - metrics.buttonHintsHeight - metrics.verticalSpacing;
+  const Rect contentRect = GUI.getContentRect(renderer, topOffset, metrics.verticalSpacing);
   GUI.drawList(
-      renderer, Rect{0, topOffset, pageWidth, contentHeight}, kRoleCount, currentStep,
+      renderer, contentRect, kRoleCount, currentStep,
       [&](int index) { return getRoleName(static_cast<uint8_t>(index)); }, nullptr, nullptr,
       [&](int index) {
         uint8_t assignedButton = tempMapping[static_cast<uint8_t>(index)];

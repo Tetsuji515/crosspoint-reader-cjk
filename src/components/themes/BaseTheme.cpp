@@ -6,6 +6,41 @@
 #include <Logging.h>
 
 #include <algorithm>
+
+BaseTheme::HintInsets BaseTheme::getButtonHintInsets(const GfxRenderer& renderer) const {
+  const int t = BaseMetrics::values.buttonHintsHeight;
+  switch (renderer.getOrientation()) {
+    case GfxRenderer::Orientation::Portrait:
+      return {0, 0, t, 0};
+    case GfxRenderer::Orientation::PortraitInverted:
+      return {t, 0, 0, 0};
+    case GfxRenderer::Orientation::LandscapeCounterClockwise:
+      return {0, t, 0, 0};
+    case GfxRenderer::Orientation::LandscapeClockwise:
+      return {0, 0, 0, t};
+  }
+  return {0, 0, 0, 0};
+}
+
+Rect BaseTheme::getContentRect(const GfxRenderer& renderer, const int topReserved, const int bottomSpacing) const {
+  const auto insets = getButtonHintInsets(renderer);
+  const int sw = renderer.getScreenWidth();
+  const int sh = renderer.getScreenHeight();
+  // Caller computes `topReserved` to already account for any header / hint
+  // gutter / etc. We only fold in SIDE and BOTTOM hint reservations here:
+  //   - Portrait keeps its existing buttonHintsHeight bottom reservation
+  //     (insets.bottom = 40),
+  //   - Landscape steals from the WIDTH (insets.left or insets.right = 40),
+  //     with no bottom reservation,
+  //   - Inverted leaves top layout to the caller (its existing hintGutterHeight
+  //     pattern already shifts content below the top hint strip; doubling that
+  //     here would push content too far down). insets.top is intentionally
+  //     ignored on the y axis.
+  const int contentX = insets.left;
+  const int contentWidth = sw - insets.left - insets.right;
+  const int contentHeight = sh - topReserved - insets.bottom - bottomSpacing;
+  return Rect{contentX, topReserved, contentWidth, contentHeight};
+}
 #include <cstdint>
 #include <string>
 
@@ -140,8 +175,56 @@ void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const si
 
 void BaseTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                 const char* btn4) const {
+  const auto orient = renderer.getOrientation();
+
+  // Landscape orientations: the X4's front bezel is on the panel's right
+  // short edge (verified by the rotation transform — Portrait labels at
+  // logical y=760 land at panel x=760, just inside the right short edge).
+  // After rendering rotation, that physical edge becomes the *vertical*
+  // edge of the logical landscape screen, NOT the horizontal bottom. So
+  // the labels need to be drawn as a rotated vertical strip:
+  //   - LandscapeCCW: native panel orientation; bezel maps to logical right edge.
+  //   - LandscapeCW:  180° from CCW;            bezel maps to logical left edge.
+  if (orient == GfxRenderer::Orientation::LandscapeClockwise ||
+      orient == GfxRenderer::Orientation::LandscapeCounterClockwise) {
+    const int screenWidth = renderer.getScreenWidth();
+    const int screenHeight = renderer.getScreenHeight();
+    constexpr int stripWidth = BaseMetrics::values.buttonHintsHeight;  // = 40 (portrait button height)
+    constexpr int hintHeight = 106;                                    // portrait buttonWidth, now strip step
+    constexpr int textYOffset = 7;
+    constexpr int x4Positions[] = {25, 130, 245, 350};
+    constexpr int x3Positions[] = {38, 154, 268, 384};
+    const int* positions = gpio.deviceIsX3() ? x3Positions : x4Positions;
+    const char* labels[] = {btn1, btn2, btn3, btn4};
+
+    const bool isCCW = orient == GfxRenderer::Orientation::LandscapeCounterClockwise;
+    // CCW: bezel on logical right edge. CW: bezel on logical left edge.
+    const int stripX = isCCW ? screenWidth - stripWidth : 0;
+
+    for (int i = 0; i < 4; i++) {
+      if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+
+      // Per-button y position is the inverse of the rotation that produced
+      // the panel coordinate of this button. In CCW logical (= panel),
+      // panel y for button i = panelHeight - 1 - (positions[i] + hintHeight - 1)
+      //                       = screenHeight - hintHeight - positions[i].
+      // In CW logical (180° from CCW), the y value collapses to positions[i].
+      const int slotY = isCCW ? (screenHeight - hintHeight - positions[i]) : positions[i];
+
+      renderer.fillRect(stripX, slotY, stripWidth, hintHeight, false);
+      renderer.drawRect(stripX, slotY, stripWidth, hintHeight);
+
+      const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i]);
+      const int textHeight = renderer.getTextHeight(UI_10_FONT_ID);
+      const int textX = stripX + (stripWidth - textHeight) / 2 - textYOffset;
+      const int textY = slotY + (hintHeight + textWidth) / 2;
+      renderer.drawTextRotated90CW(UI_10_FONT_ID, textX, textY, labels[i]);
+    }
+    return;
+  }
+
   const int pageHeight = renderer.getScreenHeight();
-  const bool placeAtTop = renderer.getOrientation() == GfxRenderer::Orientation::PortraitInverted;
+  const bool placeAtTop = orient == GfxRenderer::Orientation::PortraitInverted;
   constexpr int buttonWidth = 106;
   constexpr int buttonHeight = BaseMetrics::values.buttonHintsHeight;
   constexpr int buttonY = BaseMetrics::values.buttonHintsHeight;  // Distance from bottom

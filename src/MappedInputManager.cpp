@@ -238,11 +238,20 @@ unsigned long MappedInputManager::getHeldTime() const { return gpio.getHeldTime(
 MappedInputManager::Labels MappedInputManager::mapLabels(const char* back, const char* confirm, const char* previous,
                                                          const char* next) const {
   // Build the label order based on the configured hardware mapping.
-  // LandscapeCCW: front buttons rotate to right side (vertical). Physical
-  // top-to-bottom becomes GPIO 3,2,1,0. drawButtonHints reverses labels
-  // (0<->3, 1<->2) so that visual top = labels[3]. To make physical top = previous
-  // (user expectation: up = previous page), we swap previous<->next in the label
-  // assignment so that after drawButtonHints' reversal the labels match.
+  //
+  // The returned Labels[] is indexed by the four front-bezel hardware slots
+  // (BACK, CONFIRM, LEFT, RIGHT). Theme code (drawButtonHints) places each
+  // label at the *physical* position of its hardware button — including the
+  // vertical strip layout used in landscape orientations — so this routine
+  // only has to compensate for a single asymmetric remap that mapButton
+  // applies to LandscapeCCW: in CCW, Button::Left is wired to the user's
+  // configured "Right" front-button hardware index (and vice versa) because
+  // the bezel rotates onto the right edge with reversed top-to-bottom order.
+  //
+  // To keep label ↔ action consistent in CCW, the "previous"/"next" labels
+  // also need to swap when looked up against the LEFT/RIGHT hardware slots.
+  // Other orientations don't need this swap (mapButton only does the role
+  // remap in CCW; Inverted's mirror is on the hardware index, not the role).
   const bool swapPrevNext = effectiveOrientation == Orientation::LandscapeCounterClockwise;
   const char* prev = swapPrevNext ? next : previous;
   const char* nxt = swapPrevNext ? previous : next;

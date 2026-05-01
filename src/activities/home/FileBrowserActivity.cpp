@@ -292,15 +292,13 @@ void FileBrowserActivity::render(RenderLock&&) {
   const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
   const int pathReserved = pathLineHeight + metrics.verticalSpacing;
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight =
-      pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - pathReserved;
+  const Rect contentRect = GUI.getContentRect(renderer, contentTop, metrics.verticalSpacing + pathReserved);
   if (files.empty()) {
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, tr(STR_NO_FILES_FOUND));
   } else {
     GUI.drawList(
-        renderer, Rect{0, contentTop, pageWidth, contentHeight}, files.size(), selectorIndex,
-        [this](int index) { return getFileName(files[index]); }, nullptr,
-        [this](int index) { return UITheme::getFileIcon(files[index]); },
+        renderer, contentRect, files.size(), selectorIndex, [this](int index) { return getFileName(files[index]); },
+        nullptr, [this](int index) { return UITheme::getFileIcon(files[index]); },
         [this](int index) { return getFileExtension(files[index]); }, false);
   }
 

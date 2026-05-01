@@ -337,8 +337,51 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
 
 void LyraTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                 const char* btn4) const {
+  const auto orient = renderer.getOrientation();
+
+  // Landscape orientations: front bezel maps to a vertical edge of the logical
+  // landscape screen (right in CCW = native panel, left in CW = 180° from
+  // native). Draw labels as a rotated vertical strip on that edge so they sit
+  // next to the actual physical buttons. See BaseTheme::drawButtonHints for
+  // the rotation derivation.
+  if (orient == GfxRenderer::Orientation::LandscapeClockwise ||
+      orient == GfxRenderer::Orientation::LandscapeCounterClockwise) {
+    const int screenWidth = renderer.getScreenWidth();
+    const int screenHeight = renderer.getScreenHeight();
+    constexpr int stripWidth = LyraMetrics::values.buttonHintsHeight;
+    constexpr int hintHeight = 80;  // portrait buttonWidth
+    constexpr int textYOffset = 7;
+    constexpr int x4Positions[] = {58, 146, 254, 342};
+    constexpr int x3Positions[] = {65, 157, 291, 383};
+    const int* positions = gpio.deviceIsX3() ? x3Positions : x4Positions;
+    const char* labels[] = {btn1, btn2, btn3, btn4};
+
+    const bool isCCW = orient == GfxRenderer::Orientation::LandscapeCounterClockwise;
+    const int stripX = isCCW ? screenWidth - stripWidth : 0;
+    const bool roundLeft = isCCW;
+    const bool roundRight = !isCCW;
+
+    for (int i = 0; i < 4; i++) {
+      if (labels[i] == nullptr || labels[i][0] == '\0') continue;
+      const int slotY = isCCW ? (screenHeight - hintHeight - positions[i]) : positions[i];
+
+      renderer.fillRoundedRect(stripX, slotY, stripWidth, hintHeight, cornerRadius, Color::White);
+      // Round only the corners on the side that points away from the bezel
+      // edge so the strip looks "attached" to that edge.
+      renderer.drawRoundedRect(stripX, slotY, stripWidth, hintHeight, 1, cornerRadius, /*topLeft=*/roundLeft,
+                               /*topRight=*/roundRight, /*bottomLeft=*/roundLeft, /*bottomRight=*/roundRight, true);
+
+      const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, labels[i]);
+      const int textHeight = renderer.getTextHeight(SMALL_FONT_ID);
+      const int textX = stripX + (stripWidth - textHeight) / 2 - textYOffset;
+      const int textY = slotY + (hintHeight + textWidth) / 2;
+      renderer.drawTextRotated90CW(SMALL_FONT_ID, textX, textY, labels[i]);
+    }
+    return;
+  }
+
   const int pageHeight = renderer.getScreenHeight();
-  const bool placeAtTop = renderer.getOrientation() == GfxRenderer::Orientation::PortraitInverted;
+  const bool placeAtTop = orient == GfxRenderer::Orientation::PortraitInverted;
   const bool roundTop = !placeAtTop;
   const bool roundBottom = placeAtTop;
   constexpr int buttonWidth = 80;

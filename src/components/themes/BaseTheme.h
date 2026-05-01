@@ -120,6 +120,29 @@ class BaseTheme {
  public:
   virtual ~BaseTheme() = default;
 
+  // Insets (in pixels) reserved on each edge for the button hint strip in
+  // the active orientation. Hints land on a different edge per orientation:
+  //   Portrait                  -> bottom
+  //   PortraitInverted          -> top
+  //   LandscapeCounterClockwise -> right (logical)
+  //   LandscapeClockwise        -> left  (logical)
+  // Activities should use these insets when computing their content rect so
+  // the hint strip doesn't overlap with rendered content in landscape.
+  struct HintInsets {
+    int top;
+    int right;
+    int bottom;
+    int left;
+  };
+  HintInsets getButtonHintInsets(const GfxRenderer& renderer) const;
+
+  // Returns the content Rect for an activity, accounting for the hint inset
+  // on the appropriate edge for the current orientation. `topReserved` is
+  // the height already consumed by header / tabs / etc. above the content;
+  // `bottomSpacing` is extra padding the activity wants between the content
+  // and the bottom of its drawable area.
+  Rect getContentRect(const GfxRenderer& renderer, int topReserved, int bottomSpacing = 0) const;
+
   // Component drawing methods
   virtual void drawProgressBar(const GfxRenderer& renderer, Rect rect, size_t current, size_t total) const;
   virtual void drawBatteryLeft(const GfxRenderer& renderer, Rect rect,

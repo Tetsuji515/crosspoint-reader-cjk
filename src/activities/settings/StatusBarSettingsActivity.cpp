@@ -130,11 +130,10 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
                  tr(STR_CUSTOMISE_STATUS_BAR));
 
   const int contentTop = metrics.topPadding + hintGutterHeight + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+  const Rect contentRect = GUI.getContentRect(renderer, contentTop, metrics.verticalSpacing * 2);
   GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(MENU_ITEMS),
-      static_cast<int>(selectedIndex), [](int index) { return std::string(I18N.get(menuNames[index])); }, nullptr,
-      nullptr,
+      renderer, contentRect, static_cast<int>(MENU_ITEMS), static_cast<int>(selectedIndex),
+      [](int index) { return std::string(I18N.get(menuNames[index])); }, nullptr, nullptr,
       [this](int index) {
         // Draw status for each setting
         if (index == 0) {

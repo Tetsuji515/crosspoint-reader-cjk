@@ -182,14 +182,14 @@ void OpdsSettingsActivity::render(RenderLock&&) {
                     tr(STR_CALIBRE_URL_HINT));
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + metrics.tabBarHeight;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
+  const Rect contentRect = GUI.getContentRect(renderer, contentTop, metrics.verticalSpacing * 2);
   const int menuItems = getMenuItemCount();
 
   const StrId fieldNames[] = {StrId::STR_SERVER_NAME, StrId::STR_OPDS_SERVER_URL, StrId::STR_USERNAME,
                               StrId::STR_PASSWORD};
 
   GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, menuItems, static_cast<int>(selectedIndex),
+      renderer, contentRect, menuItems, static_cast<int>(selectedIndex),
       [this, &fieldNames](int index) {
         if (index < BASE_ITEMS) {
           return std::string(I18N.get(fieldNames[index]));
