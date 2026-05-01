@@ -22,7 +22,7 @@ bool parseFontFilename(const char* filepath, ParsedFontFilename& out) {
   if (ext) {
     out.isRichFormat = false;
   } else {
-    ext = strstr(nameCopy, ".xbf2");
+    ext = strstr(nameCopy, ".epdf");
     if (!ext) {
       return false;
     }

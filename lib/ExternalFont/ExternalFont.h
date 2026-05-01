@@ -20,15 +20,37 @@ struct ExternalFontMetrics {
   uint16_t lineHeight = 0;
 };
 
+// One Unicode interval entry from an EPDFont file. The interval table maps
+// codepoint ranges to a contiguous slice of the per-glyph metadata table:
+// for a codepoint cp in [start, end], its glyph index is
+//   glyphOffset + (cp - start)
+struct EpdInterval {
+  uint32_t start = 0;
+  uint32_t end = 0;
+  uint32_t glyphOffset = 0;  // cumulative glyph count from earlier intervals
+};
+
 /**
- * External font loader - supports Xteink .bin format
- * Filename format: FontName_size_WxH.bin (e.g. KingHwaOldSong_38_33x39.bin)
+ * External font loader. Two on-disk formats are supported:
  *
- * Font format:
- * - Direct Unicode codepoint indexing
- * - Offset = codepoint * bytesPerChar
- * - Each char = bytesPerRow * charHeight bytes
- * - 1-bit black/white bitmap, MSB first
+ *   1. Legacy Xteink ".bin": fixed-grid, direct codepoint indexing.
+ *      Filename: FontName_size_WxH.bin
+ *      Layout:   raw glyph bitmap[codepoint], each glyph = bytesPerRow * H,
+ *                row-aligned MSB-first 1-bit packing.
+ *
+ *   2. EPDFont ".epdf" (rich-metrics, produced by the x4-epdfont-converter):
+ *      Filename: FontName_size_WxH.epdf  (W and H are nominal cell size used
+ *                                          by the renderer for CJK layout)
+ *      Layout:   32-byte header + interval table + per-glyph metrics table
+ *                + variable-size bitmap blob, sequentially-packed 1-bit MSB
+ *                first (or 2-bit, but 2-bit fonts are rejected at load time
+ *                because the renderer only supports 1-bit external glyphs).
+ *      Lookup:   binary-search the interval table for codepoint, derive
+ *                glyph index, read 16-byte glyph entry, then read the bitmap
+ *                slice.
+ *      The loader converts each glyph bitmap from sequential packing to
+ *      row-aligned packing on cache insertion so the renderer can keep using
+ *      the same drawing path it uses for legacy ".bin" glyphs.
  */
 class ExternalFont {
  public:
@@ -40,7 +62,7 @@ class ExternalFont {
   ExternalFont& operator=(const ExternalFont&) = delete;
 
   /**
-   * Load font from .bin file
+   * Load font from .bin or .epdf file.
    * @param filepath Full path on SD card (e.g.
    * "/fonts/KingHwaOldSong_38_33x39.bin")
    * @return true on success
@@ -110,18 +132,20 @@ class ExternalFont {
   uint8_t _bytesPerRow = 0;
   uint16_t _bytesPerChar = 0;
   bool _isRichMetricsFormat = false;
+
+  // EPDFont format metadata (only valid when _isRichMetricsFormat is true)
   ExternalFontMetrics _fontMetrics;
-  uint32_t _metricsTableOffset = 0;
-  uint32_t _glyphDataOffset = 0;
+  EpdInterval* _intervals = nullptr;
+  uint32_t _intervalCount = 0;
+  uint32_t _glyphCount = 0;
+  uint32_t _glyphsOffset = 0;  // file offset of the glyph metrics table
+  uint32_t _bitmapOffset = 0;  // file offset of the bitmap blob
 
   // LRU cache - dynamically allocated on load(), freed on unload()
   // 128 glyphs for CJK text rendering (~34KB per font when loaded).
   // Memory is only allocated when an external font is actually used.
   static constexpr int CACHE_SIZE = 128;       // 128 glyphs
   static constexpr int MAX_GLYPH_BYTES = 260;  // Max 260 bytes per glyph (e.g. up to 38x52)
-
-  // Flag to mark cached "non-existent" glyphs (avoid repeated SD reads)
-  static constexpr uint8_t GLYPH_NOT_FOUND_MARKER = 0xFE;
 
   struct CacheEntry {
     uint32_t codepoint = 0xFFFFFFFF;  // Invalid marker
@@ -143,14 +167,49 @@ class ExternalFont {
   static int hashCodepoint(uint32_t cp) { return cp % CACHE_SIZE; }
 
   /**
-   * Read glyph data from SD card
+   * Parse and validate the EPDFont 32-byte header. The file pointer is
+   * left positioned at the start of the interval table on success.
    */
-  bool readGlyphFromSD(uint32_t codepoint, uint8_t* buffer);
-  bool readXbf2GlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out) const;
+  bool loadEpdFontHeader();
+
+  /**
+   * Read the EPDFont interval table into _intervals.
+   * Caller must have already populated _intervalCount and seek'd to
+   * the intervals offset.
+   */
+  bool readEpdIntervals();
+
+  /**
+   * Look up the interval index containing `codepoint`. Returns -1 if the
+   * codepoint is outside every interval. Uses binary search since
+   * intervals are sorted by start.
+   */
+  int findEpdInterval(uint32_t codepoint) const;
+
+  /**
+   * Read a 16-byte glyph entry by index from the on-disk metrics table.
+   * Populates `out` (width/height/advanceX/left/top, dataLength,
+   * dataOffset). Returns false on I/O error.
+   */
+  bool readEpdGlyphEntry(uint32_t glyphIndex, ExternalGlyphMetrics* out, uint32_t* outDataLength,
+                         uint32_t* outDataOffset) const;
+
+  /**
+   * Read variable-length glyph bitmap from SD into a temporary buffer,
+   * then transcode it from EPDFont's sequential 1-bit packing into the
+   * row-aligned packing the renderer expects. Output goes into `dst`
+   * (must be at least bytesPerRow(width) * height bytes wide).
+   */
+  bool readEpdGlyphBitmap(uint32_t dataOffset, uint32_t dataLength, uint8_t width, uint8_t height, uint8_t* dst) const;
+
+  /**
+   * Read legacy ".bin" glyph bitmap (fixed-grid direct codepoint indexing).
+   */
+  bool readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer);
 
   /**
    * Parse filename to get font parameters
-   * Format: FontName_size_WxH.bin
+   * Format: FontName_size_WxH.{bin,epdf}
    */
   bool parseFilename(const char* filename);
 

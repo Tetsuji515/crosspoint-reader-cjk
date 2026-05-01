@@ -47,7 +47,7 @@ constexpr std::array<std::string_view, 4> kViewableImageExtensions = {
 
 constexpr std::array<std::string_view, 2> kFontExtensions = {
     ".bin",
-    ".xbf2",
+    ".epdf",
 };
 
 }  // namespace
