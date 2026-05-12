@@ -1,5 +1,6 @@
 #include "TxtReaderActivity.h"
 
+#include <Arduino.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -382,9 +383,21 @@ void TxtReaderActivity::renderPage() {
   renderLines();
   renderStatusBar();
 
-  ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, renderer.isDarkMode());
+  ReaderRuntime::RefreshContext refreshContext{};
+  refreshContext.readerKind = ReaderRuntime::ReaderKind::Txt;
+  refreshContext.darkMode = renderer.isDarkMode();
+  refreshContext.textAntiAliasing = SETTINGS.textAntiAliasing;
+  refreshContext.grayscaleRequested = SETTINGS.textAntiAliasing;
+  refreshContext.lowMemory =
+      ReaderRuntime::classifyReaderMemory(ESP.getFreeHeap()) != ReaderRuntime::MemoryDecision::Proceed;
+  refreshContext.cadenceRemaining = pagesUntilFullRefresh;
+  refreshContext.refreshFrequency = SETTINGS.getRefreshFrequency();
 
-  if (SETTINGS.textAntiAliasing) {
+  const auto decision = ReaderRuntime::chooseReaderRefresh(refreshContext);
+  ReaderUtils::displayWithRefreshDecision(renderer, decision);
+  pagesUntilFullRefresh = decision.nextCadenceRemaining;
+
+  if (decision.runGrayscalePass) {
     ReaderUtils::renderAntiAliased(renderer, [&renderLines]() { renderLines(); });
   }
   // scope destructor clears font cache via FontCacheManager

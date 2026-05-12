@@ -3,6 +3,7 @@
 #include <CrossPointSettings.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <ReaderRuntimePolicy.h>
 
 #include "MappedInputManager.h"
 
@@ -61,6 +62,20 @@ inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntil
   } else {
     renderer.displayBuffer();
     pagesUntilFullRefresh--;
+  }
+}
+
+inline void displayWithRefreshDecision(const GfxRenderer& renderer, const ReaderRuntime::RefreshDecision& decision) {
+  switch (decision.mode) {
+    case ReaderRuntime::RefreshMode::Half:
+      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      return;
+    case ReaderRuntime::RefreshMode::DarkRedrive:
+      renderer.displayBufferDarkRedrive();
+      return;
+    case ReaderRuntime::RefreshMode::Fast:
+      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      return;
   }
 }
 

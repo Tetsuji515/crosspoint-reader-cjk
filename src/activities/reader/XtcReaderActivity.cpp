@@ -7,6 +7,7 @@
 
 #include "XtcReaderActivity.h"
 
+#include <Arduino.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -15,6 +16,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
+#include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "XtcReaderChapterSelectionActivity.h"
 #include "components/UITheme.h"
@@ -240,13 +242,24 @@ void XtcReaderActivity::renderPage() {
       }
     }
 
-    // Display BW with conditional refresh based on pagesUntilFullRefresh
-    if (pagesUntilFullRefresh <= 1) {
-      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-      pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-    } else {
-      renderer.displayBuffer();
-      pagesUntilFullRefresh--;
+    ReaderRuntime::RefreshContext refreshContext{};
+    refreshContext.readerKind = ReaderRuntime::ReaderKind::Xtc;
+    refreshContext.textAntiAliasing = true;
+    refreshContext.grayscaleRequested = true;
+    refreshContext.lowMemory =
+        ReaderRuntime::classifyReaderMemory(ESP.getFreeHeap()) != ReaderRuntime::MemoryDecision::Proceed;
+    refreshContext.cadenceRemaining = pagesUntilFullRefresh;
+    refreshContext.refreshFrequency = SETTINGS.getRefreshFrequency();
+
+    const auto decision = ReaderRuntime::chooseReaderRefresh(refreshContext);
+    ReaderUtils::displayWithRefreshDecision(renderer, decision);
+    pagesUntilFullRefresh = decision.nextCadenceRemaining;
+
+    if (!decision.runGrayscalePass) {
+      free(pageBuffer);
+      LOG_DBG("XTR", "Rendered page %lu/%lu (2-bit BW fallback)", currentPage + 1, xtc->getPageCount());
+      renderer.setDarkMode(wasDarkMode);
+      return;
     }
 
     // Pass 2: LSB buffer - mark DARK gray only (XTH value 1)
@@ -320,14 +333,16 @@ void XtcReaderActivity::renderPage() {
 
   // XTC pages already have status bar pre-rendered, no need to add our own
 
-  // Display with appropriate refresh
-  if (pagesUntilFullRefresh <= 1) {
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-    pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-  } else {
-    renderer.displayBuffer();
-    pagesUntilFullRefresh--;
-  }
+  ReaderRuntime::RefreshContext refreshContext{};
+  refreshContext.readerKind = ReaderRuntime::ReaderKind::Xtc;
+  refreshContext.lowMemory =
+      ReaderRuntime::classifyReaderMemory(ESP.getFreeHeap()) != ReaderRuntime::MemoryDecision::Proceed;
+  refreshContext.cadenceRemaining = pagesUntilFullRefresh;
+  refreshContext.refreshFrequency = SETTINGS.getRefreshFrequency();
+
+  const auto decision = ReaderRuntime::chooseReaderRefresh(refreshContext);
+  ReaderUtils::displayWithRefreshDecision(renderer, decision);
+  pagesUntilFullRefresh = decision.nextCadenceRemaining;
 
   LOG_DBG("XTR", "Rendered page %lu/%lu (%u-bit)", currentPage + 1, xtc->getPageCount(), bitDepth);
   renderer.setDarkMode(wasDarkMode);

@@ -21,11 +21,18 @@ class EpubReaderActivity final : public Activity {
   bool pendingGoHome = false;
   bool pendingScreenshot = false;
   bool skipNextButtonCheck = false;  // Skip button processing for one frame after subactivity exit
+  bool pendingStrongRefresh = true;
+  bool lastSectionCacheRebuilt = false;
+  uint8_t sectionLoadRetryCount = 0;
+  uint8_t consecutivePageTurns = 0;
+  int8_t lastPageTurnDirection = 1;
+  unsigned long lastPageTurnMs = 0;
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
-                      int orientedMarginBottom, int orientedMarginLeft);
+                      int orientedMarginBottom, int orientedMarginLeft, uint16_t loadMs);
   void renderStatusBar() const;
   void saveProgress(int spineIndex, int currentPage, int pageCount);
+  void preloadAdjacentPageGlyphs();
   // Loads the current spine item into `section`, building the cache if necessary,
   // and applies any pending percent/cached-progress jumps. Returns false when an
   // error path was already drawn (caller must return without rendering further).

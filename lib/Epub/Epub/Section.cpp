@@ -7,18 +7,16 @@
 
 #include "Epub/css/CssParser.h"
 #include "Page.h"
+#include "SectionCacheHeader.h"
 #include "hyphenation/Hyphenator.h"
 #include "parsers/ChapterHtmlSlimParser.h"
 
 namespace {
-constexpr uint8_t SECTION_FILE_VERSION = 21;
 // Minimum free heap required before attempting to build section pages.
 // Section building involves heavy allocations (Page, TextBlock, PageLine, etc.)
 // and on ESP32 without C++ exceptions, allocation failure calls abort().
 constexpr size_t MIN_FREE_HEAP_FOR_SECTION_BUILD = 50 * 1024;  // 50KB
-constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
-                                 sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
-                                 sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t);
+constexpr uint32_t HEADER_SIZE = EpubSectionCache::kSectionHeaderSize;
 
 struct PageLutEntry {
   uint32_t fileOffset;
@@ -46,18 +44,20 @@ uint32_t Section::onPageComplete(std::unique_ptr<Page> page) {
 void Section::writeSectionFileHeader(const int fontId, const float lineCompression, const bool extraParagraphSpacing,
                                      const uint8_t paragraphAlignment, const uint16_t viewportWidth,
                                      const uint16_t viewportHeight, const bool hyphenationEnabled,
-                                     const bool embeddedStyle, const uint8_t imageRendering) {
+                                     const bool firstLineIndent, const bool embeddedStyle,
+                                     const uint8_t imageRendering) {
   if (!file) {
     LOG_DBG("SCT", "File not open for writing header");
     return;
   }
-  static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(fontId) + sizeof(lineCompression) +
-                                   sizeof(extraParagraphSpacing) + sizeof(paragraphAlignment) + sizeof(viewportWidth) +
-                                   sizeof(viewportHeight) + sizeof(pageCount) + sizeof(hyphenationEnabled) +
-                                   sizeof(embeddedStyle) + sizeof(imageRendering) + sizeof(uint32_t) +
-                                   sizeof(uint32_t) + sizeof(uint32_t),
+  static_assert(HEADER_SIZE == sizeof(EpubSectionCache::kSectionFileVersion) + sizeof(fontId) +
+                                   sizeof(lineCompression) + sizeof(extraParagraphSpacing) +
+                                   sizeof(paragraphAlignment) + sizeof(viewportWidth) + sizeof(viewportHeight) +
+                                   sizeof(hyphenationEnabled) + sizeof(firstLineIndent) + sizeof(embeddedStyle) +
+                                   sizeof(imageRendering) + sizeof(pageCount) + sizeof(uint32_t) + sizeof(uint32_t) +
+                                   sizeof(uint32_t),
                 "Header size mismatch");
-  serialization::writePod(file, SECTION_FILE_VERSION);
+  serialization::writePod(file, EpubSectionCache::kSectionFileVersion);
   serialization::writePod(file, fontId);
   serialization::writePod(file, lineCompression);
   serialization::writePod(file, extraParagraphSpacing);
@@ -65,6 +65,7 @@ void Section::writeSectionFileHeader(const int fontId, const float lineCompressi
   serialization::writePod(file, viewportWidth);
   serialization::writePod(file, viewportHeight);
   serialization::writePod(file, hyphenationEnabled);
+  serialization::writePod(file, firstLineIndent);
   serialization::writePod(file, embeddedStyle);
   serialization::writePod(file, imageRendering);
   serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
@@ -75,9 +76,16 @@ void Section::writeSectionFileHeader(const int fontId, const float lineCompressi
 
 bool Section::loadSectionFile(const int fontId, const float lineCompression, const bool extraParagraphSpacing,
                               const uint8_t paragraphAlignment, const uint16_t viewportWidth,
-                              const uint16_t viewportHeight, const bool hyphenationEnabled, const bool embeddedStyle,
-                              const uint8_t imageRendering) {
+                              const uint16_t viewportHeight, const bool hyphenationEnabled, const bool firstLineIndent,
+                              const bool embeddedStyle, const uint8_t imageRendering) {
   if (!Storage.openFileForRead("SCT", filePath, file)) {
+    return false;
+  }
+
+  if (file.size() < HEADER_SIZE) {
+    file.close();
+    LOG_ERR("SCT", "Deserialization failed: Header too short");
+    clearCache();
     return false;
   }
 
@@ -85,7 +93,7 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
   {
     uint8_t version;
     serialization::readPod(file, version);
-    if (version != SECTION_FILE_VERSION) {
+    if (version != EpubSectionCache::kSectionFileVersion) {
       // Explicit close() required: member variable persists beyond function scope
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Unknown version %u", version);
@@ -93,31 +101,22 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
       return false;
     }
 
-    int fileFontId;
-    uint16_t fileViewportWidth, fileViewportHeight;
-    float fileLineCompression;
-    bool fileExtraParagraphSpacing;
-    uint8_t fileParagraphAlignment;
-    bool fileHyphenationEnabled;
-    bool fileFirstLineIndent;
-    bool fileEmbeddedStyle;
-    uint8_t fileImageRendering;
-    serialization::readPod(file, fileFontId);
-    serialization::readPod(file, fileLineCompression);
-    serialization::readPod(file, fileExtraParagraphSpacing);
-    serialization::readPod(file, fileParagraphAlignment);
-    serialization::readPod(file, fileViewportWidth);
-    serialization::readPod(file, fileViewportHeight);
-    serialization::readPod(file, fileHyphenationEnabled);
-    serialization::readPod(file, fileFirstLineIndent);
-    serialization::readPod(file, fileEmbeddedStyle);
-    serialization::readPod(file, fileImageRendering);
+    const EpubSectionCache::Parameters current{
+        fontId,         lineCompression,    extraParagraphSpacing, paragraphAlignment, viewportWidth,
+        viewportHeight, hyphenationEnabled, firstLineIndent,       embeddedStyle,      imageRendering};
+    EpubSectionCache::Parameters cached{};
+    serialization::readPod(file, cached.fontId);
+    serialization::readPod(file, cached.lineCompression);
+    serialization::readPod(file, cached.extraParagraphSpacing);
+    serialization::readPod(file, cached.paragraphAlignment);
+    serialization::readPod(file, cached.viewportWidth);
+    serialization::readPod(file, cached.viewportHeight);
+    serialization::readPod(file, cached.hyphenationEnabled);
+    serialization::readPod(file, cached.firstLineIndent);
+    serialization::readPod(file, cached.embeddedStyle);
+    serialization::readPod(file, cached.imageRendering);
 
-    if (fontId != fileFontId || lineCompression != fileLineCompression ||
-        extraParagraphSpacing != fileExtraParagraphSpacing || paragraphAlignment != fileParagraphAlignment ||
-        viewportWidth != fileViewportWidth || viewportHeight != fileViewportHeight ||
-        hyphenationEnabled != fileHyphenationEnabled || embeddedStyle != fileEmbeddedStyle ||
-        imageRendering != fileImageRendering) {
+    if (!EpubSectionCache::parametersMatch(current, cached)) {
       // Explicit close() required: member variable persists beyond function scope
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
@@ -204,7 +203,7 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
     return false;
   }
   writeSectionFileHeader(fontId, lineCompression, extraParagraphSpacing, paragraphAlignment, viewportWidth,
-                         viewportHeight, hyphenationEnabled, embeddedStyle, imageRendering);
+                         viewportHeight, hyphenationEnabled, firstLineIndent, embeddedStyle, imageRendering);
   std::vector<PageLutEntry> lut = {};
 
   // Derive the content base directory and image cache path prefix for the parser

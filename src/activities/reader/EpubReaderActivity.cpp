@@ -1,5 +1,6 @@
 #include "EpubReaderActivity.h"
 
+#include <Arduino.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
 #include <FontCacheManager.h>
@@ -9,6 +10,11 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <ReaderOperationTrace.h>
+#include <ReaderRuntimePolicy.h>
+
+#include <algorithm>
+#include <cstdint>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -19,6 +25,7 @@
 #include "MappedInputManager.h"
 #include "OrientationHelper.h"
 #include "QrDisplayActivity.h"
+#include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "activities/settings/FontSelectActivity.h"
 #include "activities/settings/LineSpacingSelectionActivity.h"
@@ -32,6 +39,7 @@ namespace {
 // pagesPerRefresh now comes from SETTINGS.getRefreshFrequency()
 constexpr unsigned long skipChapterMs = 700;
 constexpr unsigned long goHomeMs = 1000;
+constexpr uint32_t adjacentGlyphPreloadMinHeap = ReaderRuntime::MemoryThresholds::optionalQualityHeap;
 
 int clampPercent(int percent) {
   if (percent < 0) {
@@ -41,6 +49,10 @@ int clampPercent(int percent) {
     return 100;
   }
   return percent;
+}
+
+uint16_t clampDurationMs(const unsigned long duration) {
+  return duration > UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(duration);
 }
 
 }  // namespace
@@ -159,10 +171,20 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  const auto now = millis();
+  if (now - lastPageTurnMs <= 900) {
+    consecutivePageTurns = std::min<uint8_t>(consecutivePageTurns + 1, 20);
+  } else {
+    consecutivePageTurns = 1;
+  }
+  lastPageTurnMs = now;
+  lastPageTurnDirection = nextTriggered ? 1 : -1;
+
   // any button press when at end of the book goes back to the last page
   if (currentSpineIndex > 0 && currentSpineIndex >= epub->getSpineItemsCount()) {
     currentSpineIndex = epub->getSpineItemsCount() - 1;
     nextPageNumber = UINT16_MAX;
+    pendingStrongRefresh = true;
     requestUpdate();
     return;
   }
@@ -174,6 +196,7 @@ void EpubReaderActivity::loop() {
       RenderLock lock;
       nextPageNumber = 0;
       currentSpineIndex = nextTriggered ? currentSpineIndex + 1 : currentSpineIndex - 1;
+      pendingStrongRefresh = true;
       section.reset();
     }
     requestUpdate();
@@ -194,6 +217,7 @@ void EpubReaderActivity::loop() {
         RenderLock lock;
         nextPageNumber = UINT16_MAX;
         currentSpineIndex--;
+        pendingStrongRefresh = true;
         section.reset();
       }
     }
@@ -206,6 +230,7 @@ void EpubReaderActivity::loop() {
         RenderLock lock;
         nextPageNumber = 0;
         currentSpineIndex++;
+        pendingStrongRefresh = true;
         section.reset();
       }
     }
@@ -214,6 +239,10 @@ void EpubReaderActivity::loop() {
 }
 
 void EpubReaderActivity::showReaderMenu() {
+  if (!epub) {
+    return;
+  }
+
   // Snapshot reader state under render lock.
   int menuSpineIndex = 0;
   int menuCurrentPage = 0;
@@ -228,7 +257,7 @@ void EpubReaderActivity::showReaderMenu() {
   }
 
   float bookProgress = 0.0f;
-  if (epub && epub->getBookSize() > 0 && menuTotalPages > 0) {
+  if (epub->getBookSize() > 0 && menuTotalPages > 0) {
     const float chapterProgress = static_cast<float>(menuCurrentPage - 1) / static_cast<float>(menuTotalPages);
     bookProgress = epub->calculateProgress(menuSpineIndex, chapterProgress) * 100.0f;
   }
@@ -257,6 +286,7 @@ void EpubReaderActivity::onSelectChapter() {
           if (currentSpineIndex != chapterData->spineIndex) {
             currentSpineIndex = chapterData->spineIndex;
             nextPageNumber = 0;
+            pendingStrongRefresh = true;
             section.reset();
           }
         }
@@ -311,6 +341,7 @@ void EpubReaderActivity::onToggleInvertImages() {
   SETTINGS.invertImages = !SETTINGS.invertImages;
   SETTINGS.saveToFile();
   renderer.setInvertImagesInDarkMode(SETTINGS.invertImages);
+  pendingStrongRefresh = true;
   skipNextButtonCheck = true;
   requestUpdate();
 }
@@ -348,6 +379,7 @@ void EpubReaderActivity::onChangeLineSpacing() {
 void EpubReaderActivity::onStatusBarSettings() {
   startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput),
                          [this](const ActivityResult&) {
+                           pendingStrongRefresh = true;
                            skipNextButtonCheck = true;
                            requestUpdate();
                          });
@@ -524,6 +556,7 @@ void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
     OrientationHelper::applyOrientation(renderer, mappedInput, this);
 
     // Reset section to force re-layout in the new orientation.
+    pendingStrongRefresh = true;
     section.reset();
   }
 }
@@ -586,26 +619,78 @@ void EpubReaderActivity::render(RenderLock&& lock) {
   }
 
   {
+    const auto loadStart = millis();
     auto p = section->loadPageFromSectionFile();
+    const auto loadMs = clampDurationMs(millis() - loadStart);
     if (!p) {
       LOG_ERR("ERS", "Failed to load page from SD - clearing section cache");
-      section->clearCache();
+      if (sectionLoadRetryCount == 0) {
+        sectionLoadRetryCount++;
+        pendingStrongRefresh = true;
+        section->clearCache();
+        section.reset();
+        requestUpdate();
+        return;
+      }
+      sectionLoadRetryCount = 0;
       section.reset();
-      requestUpdate();  // Try again after clearing cache
-      // TODO: prevent infinite loop if the page keeps failing to load
+      renderer.clearScreen();
+      renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_MEMORY_ERROR), true, EpdFontFamily::BOLD);
+      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
       return;
     }
     const auto start = millis();
-    renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft,
+                   loadMs);
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     renderer.getFontCacheManager()->clearCache();
+    sectionLoadRetryCount = 0;
   }
   saveProgress(currentSpineIndex, section->currentPage, section->pageCount);
+  preloadAdjacentPageGlyphs();
 
   if (pendingScreenshot) {
     pendingScreenshot = false;
     ScreenshotUtil::takeScreenshot(renderer);
   }
+}
+
+void EpubReaderActivity::preloadAdjacentPageGlyphs() {
+  if (!section || !FontManager::getInstance().isExternalFontEnabled()) {
+    return;
+  }
+
+  if (ESP.getFreeHeap() < adjacentGlyphPreloadMinHeap) {
+    return;
+  }
+
+  const int currentPage = section->currentPage;
+  const int targetPage = currentPage + lastPageTurnDirection;
+  if (targetPage < 0 || targetPage >= section->pageCount) {
+    return;
+  }
+
+  ExternalFont* extFont = FontManager::getInstance().getActiveFont();
+  if (!extFont) {
+    return;
+  }
+
+  const auto preloadStart = millis();
+  section->currentPage = targetPage;
+  auto adjacentPage = section->loadPageFromSectionFile();
+  section->currentPage = currentPage;
+  if (!adjacentPage) {
+    return;
+  }
+
+  std::vector<uint32_t> codepoints;
+  adjacentPage->collectCodepoints(codepoints, extFont->getPreloadLimit());
+  if (codepoints.empty()) {
+    return;
+  }
+
+  extFont->preloadGlyphs(codepoints.data(), codepoints.size());
+  LOG_DBG("ERS", "Prefetched page %d glyphs in %ums", targetPage + 1, clampDurationMs(millis() - preloadStart));
 }
 
 void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
@@ -637,10 +722,20 @@ bool EpubReaderActivity::loadOrBuildSection(const int orientedMarginTop, const i
   LOG_DBG("ERS", "Reflow params: lineSpacing=%u, compression=%.2f, viewport=%ux%u", SETTINGS.lineSpacing,
           lineCompression, viewportWidth, viewportHeight);
 
+  lastSectionCacheRebuilt = false;
   if (!section->loadSectionFile(SETTINGS.getReaderFontId(), lineCompression, SETTINGS.extraParagraphSpacing,
                                 SETTINGS.paragraphAlignment, viewportWidth, viewportHeight, SETTINGS.hyphenationEnabled,
-                                SETTINGS.embeddedStyle, 0)) {
+                                SETTINGS.firstLineIndent, SETTINGS.embeddedStyle, 0)) {
     LOG_DBG("ERS", "Cache not found, building...");
+
+    if (ReaderRuntime::classifyReaderMemory(ESP.getFreeHeap()) == ReaderRuntime::MemoryDecision::Stop) {
+      LOG_ERR("ERS", "Insufficient heap before section build: %u", ESP.getFreeHeap());
+      section.reset();
+      renderer.clearScreen();
+      renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_MEMORY_ERROR), true, EpdFontFamily::BOLD);
+      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      return false;
+    }
 
     const auto popupFn = std::function<void()>([this]() { GUI.drawPopup(renderer, tr(STR_INDEXING)); });
 
@@ -656,6 +751,8 @@ bool EpubReaderActivity::loadOrBuildSection(const int orientedMarginTop, const i
       renderer.displayBuffer();
       return false;
     }
+    lastSectionCacheRebuilt = true;
+    pendingStrongRefresh = true;
   } else {
     LOG_DBG("ERS", "Cache found, skipping build...");
   }
@@ -691,27 +788,54 @@ bool EpubReaderActivity::loadOrBuildSection(const int orientedMarginTop, const i
 
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
-                                        const int orientedMarginLeft) {
+                                        const int orientedMarginLeft, const uint16_t loadMs) {
+  const auto totalStart = millis();
+  uint16_t preloadMs = 0;
+  uint16_t renderMs = 0;
+  uint16_t displayMs = 0;
+  uint16_t grayscaleMs = 0;
+
   // Preload external font glyphs: collect codepoints from page, sort them,
   // and batch-read from SD sequentially. Much faster than random reads during render.
   FontManager& fm = FontManager::getInstance();
   if (fm.isExternalFontEnabled()) {
+    const auto preloadStart = millis();
     ExternalFont* extFont = fm.getActiveFont();
     if (extFont) {
       std::vector<uint32_t> codepoints;
-      page->collectCodepoints(codepoints, extFont->getCacheCapacity());
+      page->collectCodepoints(codepoints, extFont->getPreloadLimit());
       if (!codepoints.empty()) {
         extFont->preloadGlyphs(codepoints.data(), codepoints.size());
       }
     }
+    preloadMs = clampDurationMs(millis() - preloadStart);
   }
 
   // Force special handling for pages with images when anti-aliasing is on
-  bool imagePageWithAA = page->hasImages() && SETTINGS.textAntiAliasing;
-
+  const auto renderStart = millis();
   page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
   renderStatusBar();
-  if (imagePageWithAA) {
+  renderMs = clampDurationMs(millis() - renderStart);
+
+  ReaderRuntime::RefreshContext refreshContext{};
+  refreshContext.readerKind = ReaderRuntime::ReaderKind::Epub;
+  refreshContext.darkMode = renderer.isDarkMode();
+  refreshContext.containsImages = page->hasImages();
+  refreshContext.textAntiAliasing = SETTINGS.textAntiAliasing;
+  refreshContext.externalFontEnabled = fm.isExternalFontEnabled();
+  refreshContext.grayscaleRequested = SETTINGS.textAntiAliasing;
+  refreshContext.chapterBoundary = pendingStrongRefresh;
+  refreshContext.cacheRebuilt = lastSectionCacheRebuilt;
+  refreshContext.lowMemory =
+      ReaderRuntime::classifyReaderMemory(ESP.getFreeHeap()) != ReaderRuntime::MemoryDecision::Proceed;
+  refreshContext.cadenceRemaining = pagesUntilFullRefresh;
+  refreshContext.refreshFrequency = SETTINGS.getRefreshFrequency();
+  refreshContext.consecutiveTurns = consecutivePageTurns;
+
+  auto decision = ReaderRuntime::chooseReaderRefresh(refreshContext);
+
+  const auto displayStart = millis();
+  if (decision.useImageDoubleFast) {
     // Double refresh with selective image blanking (pablohc's technique):
     // HALF_REFRESH sets particles too firmly for the grayscale LUT to adjust.
     // Instead, blank only the image area and do two fast refreshes.
@@ -735,54 +859,73 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         renderer.displayBuffer(HalDisplay::FAST_REFRESH);
       }
     } else {
-      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      ReaderUtils::displayWithRefreshDecision(renderer, decision);
     }
-    // Double refresh handles ghosting for image pages; don't count toward full refresh cadence
-  } else if (pagesUntilFullRefresh <= 1) {
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-    pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-  } else if (renderer.isDarkMode()) {
-    renderer.displayBufferDarkRedrive();
-    pagesUntilFullRefresh--;
   } else {
-    renderer.displayBuffer();
-    pagesUntilFullRefresh--;
+    ReaderUtils::displayWithRefreshDecision(renderer, decision);
+  }
+  displayMs = clampDurationMs(millis() - displayStart);
+  pagesUntilFullRefresh = decision.nextCadenceRemaining;
+
+  if (decision.runGrayscalePass) {
+    const auto grayscaleStart = millis();
+    if (renderer.storeBwBuffer()) {
+      // Disable dark mode during grayscale passes. The e-ink grayscale LUT tables
+      // are designed for white-background rendering. During grayscale passes:
+      // - clearScreen(0x00) fills the buffer with all-zeros (black pixels)
+      // - Font anti-aliasing is rendered as white marks on a black buffer
+      // This produces correct grayscale data for the display hardware.
+      const bool wasDarkMode = renderer.isDarkMode();
+      renderer.setDarkMode(false);
+
+      renderer.clearScreen(0x00);
+      renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+      renderer.copyGrayscaleLsbBuffers();
+
+      // Render and copy to MSB buffer
+      renderer.clearScreen(0x00);
+      renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+      renderer.copyGrayscaleMsbBuffers();
+
+      // display grayscale part
+      renderer.displayGrayBuffer();
+      renderer.setRenderMode(GfxRenderer::BW);
+
+      renderer.setDarkMode(wasDarkMode);
+      renderer.restoreBwBuffer();
+    } else {
+      LOG_ERR("ERS", "Skipping grayscale pass; BW buffer store failed");
+      decision.runGrayscalePass = false;
+    }
+    grayscaleMs = clampDurationMs(millis() - grayscaleStart);
   }
 
-  // Save bw buffer to reset buffer state after grayscale data sync
-  renderer.storeBwBuffer();
+  ReaderRuntime::ReaderOperationTrace trace{};
+  trace.readerKind = ReaderRuntime::ReaderKind::Epub;
+  trace.operation = ReaderRuntime::ReaderOperation::RenderPage;
+  trace.sectionIndex = static_cast<int16_t>(currentSpineIndex);
+  trace.pageIndex = section ? static_cast<int16_t>(section->currentPage) : -1;
+  trace.refreshMode = decision.mode;
+  trace.refreshReason = decision.reason;
+  trace.freeHeap = ESP.getFreeHeap();
+  trace.minFreeHeap = ESP.getMinFreeHeap();
+  trace.loadMs = loadMs;
+  trace.preloadMs = preloadMs;
+  trace.renderMs = renderMs;
+  trace.displayMs = displayMs;
+  trace.grayscaleMs = decision.runGrayscalePass ? grayscaleMs : 0;
+  trace.totalMs = clampDurationMs(millis() - totalStart + loadMs);
+  ReaderRuntime::setLastReaderOperationTrace(trace);
 
-  // Grayscale rendering - skip for external fonts (1-bit bitmap, no antialiasing benefit)
-  const bool useExternalFont = FontManager::getInstance().isExternalFontEnabled();
-  if (SETTINGS.textAntiAliasing && !useExternalFont) {
-    // Disable dark mode during grayscale passes. The e-ink grayscale LUT tables
-    // are designed for white-background rendering. During grayscale passes:
-    // - clearScreen(0x00) fills the buffer with all-zeros (black pixels)
-    // - Font anti-aliasing is rendered as white marks on a black buffer
-    // This produces correct grayscale data for the display hardware.
-    const bool wasDarkMode = renderer.isDarkMode();
-    renderer.setDarkMode(false);
-
-    renderer.clearScreen(0x00);
-    renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
-    renderer.copyGrayscaleLsbBuffers();
-
-    // Render and copy to MSB buffer
-    renderer.clearScreen(0x00);
-    renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
-    renderer.copyGrayscaleMsbBuffers();
-
-    // display grayscale part
-    renderer.displayGrayBuffer();
-    renderer.setRenderMode(GfxRenderer::BW);
-
-    renderer.setDarkMode(wasDarkMode);
+  if (trace.totalMs > 800) {
+    LOG_DBG("ERS", "Slow page turn load=%ums preload=%ums render=%ums display=%ums gray=%ums total=%ums", trace.loadMs,
+            trace.preloadMs, trace.renderMs, trace.displayMs, trace.grayscaleMs, trace.totalMs);
   }
 
-  // restore the bw data
-  renderer.restoreBwBuffer();
+  pendingStrongRefresh = false;
+  lastSectionCacheRebuilt = false;
 }
 
 void EpubReaderActivity::renderStatusBar() const {
@@ -819,6 +962,7 @@ void EpubReaderActivity::invalidateSectionPreservingPosition() {
     nextPageNumber = section->currentPage;
     section.reset();
   }
+  pendingStrongRefresh = true;
 }
 
 void EpubReaderActivity::jumpToPercent(int percent) {
@@ -868,6 +1012,9 @@ void EpubReaderActivity::jumpToPercent(int percent) {
 
   {
     RenderLock lock;
+    if (currentSpineIndex != targetSpineIndex) {
+      pendingStrongRefresh = true;
+    }
     currentSpineIndex = targetSpineIndex;
     nextPageNumber = 0;
     pendingPercentJump = true;
