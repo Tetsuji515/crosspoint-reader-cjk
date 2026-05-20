@@ -14,6 +14,11 @@ struct ExternalGlyphLayout {
   bool trimLeadingEmptyColumns = false;
 };
 
+struct ExternalGlyphFallbacks {
+  uint32_t codepoints[4] = {};
+  uint8_t count = 0;
+};
+
 ExternalGlyphLayout computeExternalGlyphLayout(int cursorX, int baselineY, const ExternalFont& font,
                                                const ExternalGlyphMetrics& metrics, int advanceOverride = -1);
 
@@ -47,7 +52,15 @@ inline int adjustNonRichAdvance(ExternalGlyphMetrics& metrics, const ExternalFon
 
 int clampExternalAdvance(int baseWidth, int spacing);
 
+bool shouldUseCjkSymbolCellMetrics(uint32_t codepoint);
+bool shouldUseGlyphBoundsForAdvance(uint32_t codepoint);
+ExternalGlyphFallbacks getExternalGlyphFallbacks(uint32_t codepoint);
+int getExternalGlyphAdvanceForRendering(uint16_t glyphAdvance, uint8_t cellWidth, int spacing, bool forceCellAdvance);
+int getExternalGlyphAdvanceForRendering(const ExternalGlyphMetrics& metrics, uint8_t cellWidth, int spacing,
+                                        bool forceCellAdvance, bool useGlyphBounds);
 int getExternalGlyphAdvanceForRendering(const ExternalFont& font, uint32_t codepoint, int spacing);
+void normalizeCjkSymbolMetrics(ExternalGlyphMetrics& metrics, uint8_t cellWidth);
+void normalizeCjkSymbolMetricsForRendering(ExternalGlyphMetrics& metrics, uint8_t cellWidth, bool richMetricsFormat);
 
 // --- Font-level render metrics ---
 

@@ -378,7 +378,7 @@ int GfxRenderer::getTextWidthUiOnly(const char* text) const {
         // For non-rich format, advanceX doesn't include left whitespace,
         // but rendering zeros metrics.left and adds it to advance.
         // Must match that here so getTextWidth and drawText agree.
-        if (!uiExtFont->isRichMetricsFormat()) {
+        if (!uiExtFont->isRichMetricsFormat() && !shouldUseCjkSymbolCellMetrics(cp)) {
           ExternalGlyphMetrics tmpMetrics{};
           uiExtFont->getGlyphMetrics(cp, &tmpMetrics);
           // Flags bit 0x01 means non-empty glyph with cached metrics.
@@ -491,7 +491,7 @@ int GfxRenderer::getTextWidthUiMixed(const int effectiveFontId, const char* text
         width += getExternalGlyphAdvanceForRendering(*uiExtFont, cp, 0);
         // For non-rich format, match rendering advance by adding left whitespace.
         // Only when flags has bit 0x01 (non-empty cached metrics with valid left).
-        if (!uiExtFont->isRichMetricsFormat()) {
+        if (!uiExtFont->isRichMetricsFormat() && !shouldUseCjkSymbolCellMetrics(cp)) {
           ExternalGlyphMetrics tmpMetrics{};
           uiExtFont->getGlyphMetrics(cp, &tmpMetrics);
           if (tmpMetrics.flags & 0x01) {
@@ -633,11 +633,18 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
           const uint8_t* bitmap = uiExtFont->getGlyph(cp);
           if (bitmap) {
             ExternalGlyphMetrics metrics = getDefaultMetrics(*uiExtFont, cp);
-            // Non-rich (.bin): fold minX-based left into advance, zero metrics.left
-            int advance = getExternalGlyphAdvanceForRendering(*uiExtFont, cp, 0);
-            if (!uiExtFont->isRichMetricsFormat()) {
+            int advance = 0;
+            if (shouldUseCjkSymbolCellMetrics(cp)) {
+              normalizeCjkSymbolMetricsForRendering(metrics, uiExtFont->getCharWidth(),
+                                                    uiExtFont->isRichMetricsFormat());
+              advance = getExternalGlyphAdvanceForRendering(metrics, uiExtFont->getCharWidth(), 0, true, false);
+            } else if (!uiExtFont->isRichMetricsFormat()) {
+              // Non-rich (.bin): fold minX-based left into advance, zero metrics.left
+              advance = getExternalGlyphAdvanceForRendering(*uiExtFont, cp, 0);
               advance += metrics.left;
               metrics.left = 0;
+            } else {
+              advance = getExternalGlyphAdvanceForRendering(*uiExtFont, cp, 0);
             }
             renderExternalGlyph(bitmap, uiExtFont, &xPos, yPos, black, metrics, advance);
             rendered = true;
@@ -2178,9 +2185,14 @@ bool GfxRenderer::renderCharReader(const uint32_t cp, int* x, const int* y, cons
   const uint8_t* bitmap = extFont->getGlyph(cp);
   if (bitmap) {
     ExternalGlyphMetrics metrics = getDefaultMetrics(*extFont, cp);
+    if (shouldUseCjkSymbolCellMetrics(cp)) {
+      normalizeCjkSymbolMetricsForRendering(metrics, extFont->getCharWidth(), extFont->isRichMetricsFormat());
+    }
     const int spacing = isCjk ? cjkSpacing : getAsciiSpacing(cp);
-    const int advance = clampExternalAdvance(metrics.advanceX, spacing);
-    renderExternalGlyph(bitmap, extFont, x, *y, pixelState, metrics, advance);
+    const int advance = getExternalGlyphAdvanceForRendering(metrics, extFont->getCharWidth(), spacing, isCjk,
+                                                            shouldUseGlyphBoundsForAdvance(cp));
+    const int cellClipWidth = isCjk ? extFont->getCharWidth() : -1;
+    renderExternalGlyph(bitmap, extFont, x, *y, pixelState, metrics, advance, cellClipWidth);
     return true;
   }
   // Missing glyph in external reader font - try built-in CJK UI font for CJK
@@ -2202,7 +2214,13 @@ bool GfxRenderer::renderCharUiCjk(const uint32_t cp, int* x, const int* y, const
       const uint8_t* bitmap = uiExtFont->getGlyph(cp);
       if (bitmap) {
         ExternalGlyphMetrics metrics = getDefaultMetrics(*uiExtFont, cp);
-        const int advanceCJK = adjustNonRichAdvance(metrics, *uiExtFont);
+        int advanceCJK = 0;
+        if (shouldUseCjkSymbolCellMetrics(cp)) {
+          normalizeCjkSymbolMetricsForRendering(metrics, uiExtFont->getCharWidth(), uiExtFont->isRichMetricsFormat());
+          advanceCJK = getExternalGlyphAdvanceForRendering(metrics, uiExtFont->getCharWidth(), 0, true, false);
+        } else {
+          advanceCJK = adjustNonRichAdvance(metrics, *uiExtFont);
+        }
         renderExternalGlyph(bitmap, uiExtFont, x, *y, pixelState, metrics, advanceCJK);
         return true;
       }
@@ -2229,7 +2247,13 @@ bool GfxRenderer::renderCharUiCjk(const uint32_t cp, int* x, const int* y, const
         if (!uiExtFont->isRichMetricsFormat()) {
           adjustedY += CJK_UI_FONT_DESCENT;
         }
-        const int adv = adjustNonRichAdvance(metrics, *uiExtFont);
+        int adv = 0;
+        if (shouldUseCjkSymbolCellMetrics(cp)) {
+          normalizeCjkSymbolMetricsForRendering(metrics, uiExtFont->getCharWidth(), uiExtFont->isRichMetricsFormat());
+          adv = getExternalGlyphAdvanceForRendering(metrics, uiExtFont->getCharWidth(), 0, true, false);
+        } else {
+          adv = adjustNonRichAdvance(metrics, *uiExtFont);
+        }
         renderExternalGlyph(bitmap, uiExtFont, x, adjustedY, pixelState, metrics, adv);
         return true;
       }
@@ -2243,6 +2267,9 @@ bool GfxRenderer::renderCharUiCjk(const uint32_t cp, int* x, const int* y, const
       const uint8_t* bitmap = extFont->getGlyph(cp);
       if (bitmap) {
         ExternalGlyphMetrics metrics = getDefaultMetrics(*extFont, cp);
+        if (shouldUseCjkSymbolCellMetrics(cp)) {
+          normalizeCjkSymbolMetricsForRendering(metrics, extFont->getCharWidth(), extFont->isRichMetricsFormat());
+        }
         // Non-rich fonts need descent adjustment to align with EPD font baseline
         int adjustedY = *y;
         if (!extFont->isRichMetricsFormat()) {
@@ -2267,7 +2294,13 @@ bool GfxRenderer::renderCharUiNonCjk(const uint32_t cp, int* x, const int* y, co
       const uint8_t* bitmap = uiExtFont->getGlyph(cp);
       if (bitmap) {
         ExternalGlyphMetrics metrics = getDefaultMetrics(*uiExtFont, cp);
-        const int advanceNonCJK = adjustNonRichAdvance(metrics, *uiExtFont);
+        int advanceNonCJK = 0;
+        if (shouldUseCjkSymbolCellMetrics(cp)) {
+          normalizeCjkSymbolMetricsForRendering(metrics, uiExtFont->getCharWidth(), uiExtFont->isRichMetricsFormat());
+          advanceNonCJK = getExternalGlyphAdvanceForRendering(metrics, uiExtFont->getCharWidth(), 0, true, false);
+        } else {
+          advanceNonCJK = adjustNonRichAdvance(metrics, *uiExtFont);
+        }
         renderExternalGlyph(bitmap, uiExtFont, x, *y, pixelState, metrics, advanceNonCJK);
         return true;
       }
@@ -2293,7 +2326,13 @@ bool GfxRenderer::renderCharUiNonCjk(const uint32_t cp, int* x, const int* y, co
         if (!uiExtFont->isRichMetricsFormat()) {
           adjustedY += CJK_UI_FONT_DESCENT;
         }
-        const int adv = adjustNonRichAdvance(metrics, *uiExtFont);
+        int adv = 0;
+        if (shouldUseCjkSymbolCellMetrics(cp)) {
+          normalizeCjkSymbolMetricsForRendering(metrics, uiExtFont->getCharWidth(), uiExtFont->isRichMetricsFormat());
+          adv = getExternalGlyphAdvanceForRendering(metrics, uiExtFont->getCharWidth(), 0, true, false);
+        } else {
+          adv = adjustNonRichAdvance(metrics, *uiExtFont);
+        }
         renderExternalGlyph(bitmap, uiExtFont, x, adjustedY, pixelState, metrics, adv);
         return true;
       }
@@ -2452,15 +2491,32 @@ int GfxRenderer::getEffectiveFontId(int fontId) const {
 
 void GfxRenderer::renderExternalGlyph(const uint8_t* bitmap, ExternalFont* font, int* x, const int lineTopY,
                                       const bool pixelState, const ExternalGlyphMetrics& metrics,
-                                      const int advanceOverride) const {
+                                      const int advanceOverride, const int cellClipWidth) const {
   const uint8_t width = metrics.width > 0 ? metrics.width : font->getCharWidth();
   const uint8_t height = metrics.height > 0 ? metrics.height : font->getCharHeight();
-  const uint8_t bytesPerRow = font->getBytesPerRow();
+  const uint8_t bytesPerRow = (width + 7) / 8;
   const ExternalGlyphLayout layout = computeExternalGlyphLayout(*x, lineTopY, *font, metrics, advanceOverride);
+  const int cursorX = *x;
+  const int screenWidth = getScreenWidth();
+  const int screenHeight = getScreenHeight();
+  int minGlyphX = std::max(0, -layout.drawX);
+  int maxGlyphX = std::min<int>(width, screenWidth - layout.drawX);
+  const int minGlyphY = std::max(0, -layout.drawY);
+  const int maxGlyphY = std::min<int>(height, screenHeight - layout.drawY);
 
-  for (int glyphY = 0; glyphY < height; glyphY++) {
+  if (cellClipWidth > 0) {
+    minGlyphX = std::max(minGlyphX, cursorX - layout.drawX);
+    maxGlyphX = std::min(maxGlyphX, cursorX + cellClipWidth - layout.drawX);
+  }
+
+  if (minGlyphX >= maxGlyphX || minGlyphY >= maxGlyphY) {
+    *x += layout.advanceX;
+    return;
+  }
+
+  for (int glyphY = minGlyphY; glyphY < maxGlyphY; glyphY++) {
     const int screenY = layout.drawY + glyphY;
-    for (int glyphX = 0; glyphX < width; glyphX++) {
+    for (int glyphX = minGlyphX; glyphX < maxGlyphX; glyphX++) {
       const int byteIndex = glyphY * bytesPerRow + (glyphX / 8);
       const int bitIndex = 7 - (glyphX % 8);  // MSB first
 
