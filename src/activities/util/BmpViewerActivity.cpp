@@ -36,7 +36,7 @@ bool calculatePlacement(const int sourceWidth, const int sourceHeight, const int
   return true;
 }
 
-void renderErrorScreen(GfxRenderer& renderer, MappedInputManager& mappedInput, const char* message) {
+void renderErrorScreen(GfxRenderer& renderer, const MappedInputManager& mappedInput, const char* message) {
   renderer.clearScreen();
   renderer.drawCenteredText(UI_10_FONT_ID, renderer.getScreenHeight() / 2, message);
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
