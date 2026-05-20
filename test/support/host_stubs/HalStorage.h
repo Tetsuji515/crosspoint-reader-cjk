@@ -24,4 +24,6 @@ class HalStorage {
 
 #define Storage HalStorage::getInstance()
 
+using HalFile = FsFile;
+
 inline unsigned long millis() { return 0; }

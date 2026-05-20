@@ -8,6 +8,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEST_FILE = REPO_ROOT / "test" / "LegacyExternalFontCompatibilityTest.cpp"
 EXTERNAL_FONT_CPP = REPO_ROOT / "lib" / "ExternalFont" / "ExternalFont.cpp"
+FONT_FILENAME_PARSER_CPP = REPO_ROOT / "lib" / "ExternalFont" / "FontFilenameParser.cpp"
 HOST_STUBS = REPO_ROOT / "test" / "support" / "host_stubs"
 EXTERNAL_FONT_INCLUDE = REPO_ROOT / "lib" / "ExternalFont"
 
@@ -20,6 +21,7 @@ def compile_test(output: Path) -> subprocess.CompletedProcess[str]:
         f"-I{EXTERNAL_FONT_INCLUDE}",
         str(TEST_FILE),
         str(EXTERNAL_FONT_CPP),
+        str(FONT_FILENAME_PARSER_CPP),
         "-o",
         str(output),
     ]
