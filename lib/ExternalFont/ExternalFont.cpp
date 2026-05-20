@@ -55,6 +55,79 @@ void transcodeEpdBitmapToRowAligned(const uint8_t* src, uint8_t* dst, uint8_t wi
   }
 }
 
+bool isAdvanceOnlyWhitespace(const uint32_t codepoint) {
+  if (codepoint == ' ' || codepoint == '\t' || codepoint == 0x00A0) return true;
+  if (codepoint == 0x1680 || codepoint == 0x202F || codepoint == 0x205F || codepoint == 0x3000) return true;
+  return codepoint >= 0x2000 && codepoint <= 0x200F;
+}
+
+bool bitmapHasInk(const uint8_t* bitmap, const uint8_t width, const uint8_t height) {
+  if (bitmap == nullptr || width == 0 || height == 0) {
+    return false;
+  }
+
+  const uint8_t bytesPerRow = (width + 7) / 8;
+  for (uint8_t y = 0; y < height; ++y) {
+    for (uint8_t x = 0; x < width; ++x) {
+      const int byteIndex = y * bytesPerRow + (x >> 3);
+      const int bitIndex = 7 - (x & 7);
+      if ((bitmap[byteIndex] >> bitIndex) & 1) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+struct LegacyFallbacks {
+  uint32_t codepoints[4] = {};
+  uint8_t count = 0;
+};
+
+void setFallbacks(LegacyFallbacks& fallbacks, uint32_t first, uint32_t second = 0, uint32_t third = 0,
+                  uint32_t fourth = 0) {
+  fallbacks.codepoints[0] = first;
+  fallbacks.count = 1;
+  if (second != 0) {
+    fallbacks.codepoints[fallbacks.count++] = second;
+  }
+  if (third != 0) {
+    fallbacks.codepoints[fallbacks.count++] = third;
+  }
+  if (fourth != 0) {
+    fallbacks.codepoints[fallbacks.count++] = fourth;
+  }
+}
+
+LegacyFallbacks getGlyphFallbacks(const uint32_t codepoint) {
+  LegacyFallbacks fallbacks{};
+  switch (codepoint) {
+    case 0x201C:  // Left double quotation mark
+      setFallbacks(fallbacks, 0x300C, 0x300E, 0x0022);
+      break;
+    case 0x201D:  // Right double quotation mark
+      setFallbacks(fallbacks, 0x300D, 0x300F, 0x0022);
+      break;
+    case 0x2018:  // Left single quotation mark
+      setFallbacks(fallbacks, 0x300C, 0x300E, 0x0027);
+      break;
+    case 0x2019:  // Right single quotation mark
+      setFallbacks(fallbacks, 0x300D, 0x300F, 0x0027);
+      break;
+    case 0x300C:  // Left corner bracket
+    case 0x300E:  // Left white corner bracket
+      setFallbacks(fallbacks, 0x201C, 0x0022);
+      break;
+    case 0x300D:  // Right corner bracket
+    case 0x300F:  // Right white corner bracket
+      setFallbacks(fallbacks, 0x201D, 0x0022);
+      break;
+    default:
+      break;
+  }
+  return fallbacks;
+}
+
 }  // namespace
 
 ExternalFont::~ExternalFont() { unload(); }
@@ -216,16 +289,19 @@ bool ExternalFont::readEpdGlyphEntry(uint32_t glyphIndex, ExternalGlyphMetrics* 
                                      uint32_t* outDataOffset) const {
   if (!_fontFile || glyphIndex >= _glyphCount) return false;
   const uint32_t offset = _glyphsOffset + glyphIndex * EPDFONT_GLYPH_ENTRY_SIZE;
-  if (!_fontFile.seek(offset)) {
-    _hasLastReadOffset = false;
-    return false;
+  if (!_hasLastReadOffset || _lastReadOffset != offset) {
+    if (!_fontFile.seek(offset)) {
+      _hasLastReadOffset = false;
+      return false;
+    }
   }
   uint8_t entry[EPDFONT_GLYPH_ENTRY_SIZE];
   if (_fontFile.read(entry, sizeof(entry)) != sizeof(entry)) {
     _hasLastReadOffset = false;
     return false;
   }
-  _hasLastReadOffset = false;  // we just seeked away from the bitmap stream
+  _lastReadOffset = offset + EPDFONT_GLYPH_ENTRY_SIZE;
+  _hasLastReadOffset = true;
 
   const uint8_t width = entry[0];
   const uint8_t height = entry[1];
@@ -277,15 +353,19 @@ bool ExternalFont::readEpdGlyphBitmap(uint32_t dataOffset, uint32_t dataLength, 
     LOG_ERR("EFT", "EPDFont glyph source dataLength %u exceeds tmp buffer", dataLength);
     return false;
   }
-  if (!_fontFile.seek(_bitmapOffset + dataOffset)) {
-    _hasLastReadOffset = false;
-    return false;
+  const uint32_t offset = _bitmapOffset + dataOffset;
+  if (!_hasLastReadOffset || _lastReadOffset != offset) {
+    if (!_fontFile.seek(offset)) {
+      _hasLastReadOffset = false;
+      return false;
+    }
   }
   if (_fontFile.read(src, dataLength) != dataLength) {
     _hasLastReadOffset = false;
     return false;
   }
-  _hasLastReadOffset = false;
+  _lastReadOffset = offset + dataLength;
+  _hasLastReadOffset = true;
   transcodeEpdBitmapToRowAligned(src, dst, width, height);
   return true;
 }
@@ -389,8 +469,7 @@ bool ExternalFont::readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer) {
 
   bool needSeek = true;
   if (_hasLastReadOffset && _bytesPerChar > 0) {
-    const uint32_t expectedNext = _lastReadOffset + _bytesPerChar;
-    if (offset == expectedNext) {
+    if (offset == _lastReadOffset) {
       needSeek = false;
     }
   }
@@ -403,7 +482,7 @@ bool ExternalFont::readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer) {
   }
 
   size_t bytesRead = _fontFile.read(buffer, _bytesPerChar);
-  _lastReadOffset = offset;
+  _lastReadOffset = offset + _bytesPerChar;
   _hasLastReadOffset = true;
 
   if (bytesRead != _bytesPerChar) {
@@ -450,6 +529,27 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
   uint8_t minX = _charWidth;
   uint8_t maxX = 0;
 
+  auto scanCachedBitmap = [&](uint8_t width, uint8_t height) {
+    isEmpty = true;
+    minX = width;
+    maxX = 0;
+    if (width == 0 || height == 0) {
+      return;
+    }
+    const uint8_t bytesPerRow = (width + 7) / 8;
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        const int byteIndex = y * bytesPerRow + (x >> 3);
+        const int bitIndex = 7 - (x & 7);
+        if ((_cache[slot].bitmap[byteIndex] >> bitIndex) & 1) {
+          isEmpty = false;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+      }
+    }
+  };
+
   if (_isRichMetricsFormat) {
     auto fetch = [&](uint32_t cp) -> bool {
       const int intervalIdx = findEpdInterval(cp);
@@ -480,6 +580,10 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
     };
 
     readSuccess = fetch(codepoint);
+    if (readSuccess && glyphWidth > 0 && glyphHeight > 0) {
+      scanCachedBitmap(glyphWidth, glyphHeight);
+    }
+
     // Fullwidth->halfwidth fallback (FF01..FF5E -> 0021..007E) for fonts that
     // only ship halfwidth ASCII glyphs.
     if (!readSuccess && codepoint >= 0xFF01 && codepoint <= 0xFF5E) {
@@ -487,6 +591,25 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
       if (fetch(halfwidth)) {
         readSuccess = true;
         actualCodepoint = halfwidth;
+      }
+    }
+
+    if (!readSuccess || (isEmpty && !isAdvanceOnlyWhitespace(codepoint))) {
+      const LegacyFallbacks fallbacks = getGlyphFallbacks(codepoint);
+      for (uint8_t i = 0; i < fallbacks.count; ++i) {
+        if (!fetch(fallbacks.codepoints[i])) {
+          continue;
+        }
+        if (glyphWidth > 0 && glyphHeight > 0) {
+          scanCachedBitmap(glyphWidth, glyphHeight);
+        } else {
+          isEmpty = true;
+        }
+        if (!isEmpty || isAdvanceOnlyWhitespace(fallbacks.codepoints[i])) {
+          readSuccess = true;
+          actualCodepoint = fallbacks.codepoints[i];
+          break;
+        }
       }
     }
   } else {
@@ -498,39 +621,43 @@ const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
     }
     glyphWidth = _charWidth;
     glyphHeight = _charHeight;
-  }
-
-  // Scan bitmap for content / minX / maxX (used by legacy metrics fallback).
-  if (readSuccess && glyphWidth > 0 && glyphHeight > 0) {
-    const uint8_t bytesPerRow = (glyphWidth + 7) / 8;
-    minX = glyphWidth;
-    for (int y = 0; y < glyphHeight; y++) {
-      for (int x = 0; x < glyphWidth; x++) {
-        const int byteIndex = y * bytesPerRow + (x >> 3);
-        const int bitIndex = 7 - (x & 7);
-        if ((_cache[slot].bitmap[byteIndex] >> bitIndex) & 1) {
-          isEmpty = false;
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
+    if (readSuccess) {
+      scanCachedBitmap(glyphWidth, glyphHeight);
+    }
+    if (!readSuccess || (isEmpty && !isAdvanceOnlyWhitespace(codepoint))) {
+      const LegacyFallbacks fallbacks = getGlyphFallbacks(codepoint);
+      for (uint8_t i = 0; i < fallbacks.count; ++i) {
+        if (!readLegacyGlyphFromSD(fallbacks.codepoints[i], _cache[slot].bitmap)) {
+          continue;
+        }
+        scanCachedBitmap(glyphWidth, glyphHeight);
+        if (!isEmpty || isAdvanceOnlyWhitespace(fallbacks.codepoints[i])) {
+          readSuccess = true;
+          actualCodepoint = fallbacks.codepoints[i];
+          break;
         }
       }
     }
   }
 
+  // Scan bitmap for content / minX / maxX (used by legacy metrics fallback).
+  if (_isRichMetricsFormat && readSuccess && glyphWidth > 0 && glyphHeight > 0) {
+    scanCachedBitmap(glyphWidth, glyphHeight);
+  }
+
   _cache[slot].codepoint = codepoint;
   _cache[slot].lastUsed = ++_accessCounter;
 
-  // Whitespace characters (U+2000-U+200F) are expected to be empty; render
-  // them with explicit widths instead of marking notFound.
-  const bool isWhitespace = (codepoint >= 0x2000 && codepoint <= 0x200F);
-  _cache[slot].notFound = !readSuccess || (isEmpty && !isWhitespace && codepoint > 0x7F && !_isRichMetricsFormat);
+  // Whitespace characters are expected to be empty; render them with explicit
+  // widths instead of marking notFound. Other empty glyphs must fall through to
+  // the next font, otherwise punctuation like U+201C can disappear silently.
+  const bool isWhitespace = isAdvanceOnlyWhitespace(codepoint);
+  _cache[slot].notFound = !readSuccess || (isEmpty && !isWhitespace && codepoint > 0x7F);
 
   _cache[slot].metrics = {};
 
   if (_isRichMetricsFormat) {
     _cache[slot].metrics = readMetrics;
-    // EPDFont guarantees per-glyph metrics, so we do NOT mark empty glyphs
-    // as notFound — they may legitimately be advance-only spaces.
     if (readMetrics.advanceX == 0 && isWhitespace) {
       // Defensive fallback for badly-converted fonts.
       _cache[slot].metrics.advanceX = _charWidth / 3;
@@ -627,7 +754,7 @@ void ExternalFont::preloadGlyphs(const uint32_t* codepoints, size_t count) {
     return;
   }
 
-  const size_t maxLoad = std::min(count, static_cast<size_t>(CACHE_SIZE));
+  const size_t maxLoad = std::min(count, static_cast<size_t>(PRELOAD_LIMIT));
 
   // Sort + dedupe so SD reads stay roughly sequential (especially for legacy
   // .bin where neighbouring codepoints are neighbouring file offsets).
@@ -640,8 +767,108 @@ void ExternalFont::preloadGlyphs(const uint32_t* codepoints, size_t count) {
 
   size_t loaded = 0;
   size_t skipped = 0;
+
+  if (_isRichMetricsFormat) {
+    struct PendingEpdGlyph {
+      uint32_t codepoint = 0;
+      ExternalGlyphMetrics metrics = {};
+      uint32_t dataLength = 0;
+      uint32_t dataOffset = 0;
+    };
+
+    std::vector<PendingEpdGlyph> pending;
+    pending.reserve(sorted.size());
+
+    for (uint32_t cp : sorted) {
+      if (findInCache(cp) >= 0) {
+        getGlyph(cp);
+        skipped++;
+        continue;
+      }
+
+      const int intervalIdx = findEpdInterval(cp);
+      if (intervalIdx < 0) {
+        getGlyph(cp);
+        loaded++;
+        continue;
+      }
+
+      const EpdInterval& iv = _intervals[intervalIdx];
+      const uint32_t glyphIndex = iv.glyphOffset + (cp - iv.start);
+      PendingEpdGlyph glyph{};
+      glyph.codepoint = cp;
+      if (!readEpdGlyphEntry(glyphIndex, &glyph.metrics, &glyph.dataLength, &glyph.dataOffset)) {
+        getGlyph(cp);
+        loaded++;
+        continue;
+      }
+      pending.push_back(glyph);
+    }
+
+    std::sort(pending.begin(), pending.end(),
+              [](const PendingEpdGlyph& a, const PendingEpdGlyph& b) { return a.dataOffset < b.dataOffset; });
+
+    for (const PendingEpdGlyph& glyph : pending) {
+      if (getGlyphFallbacks(glyph.codepoint).count > 0) {
+        getGlyph(glyph.codepoint);
+        loaded++;
+        continue;
+      }
+
+      const int slot = getLruSlot();
+      if (_cache[slot].codepoint != 0xFFFFFFFF) {
+        const int oldHash = hashCodepoint(_cache[slot].codepoint);
+        for (int i = 0; i < CACHE_SIZE; i++) {
+          const int idx = (oldHash + i) % CACHE_SIZE;
+          if (_hashTable[idx] == slot) {
+            _hashTable[idx] = -1;
+            break;
+          }
+        }
+      }
+
+      bool readSuccess = true;
+      if (glyph.metrics.width == 0 || glyph.metrics.height == 0 || glyph.dataLength == 0) {
+        std::memset(_cache[slot].bitmap, 0, MAX_GLYPH_BYTES);
+      } else {
+        readSuccess = readEpdGlyphBitmap(glyph.dataOffset, glyph.dataLength, glyph.metrics.width, glyph.metrics.height,
+                                         _cache[slot].bitmap);
+        if (!readSuccess) {
+          std::memset(_cache[slot].bitmap, 0, MAX_GLYPH_BYTES);
+        }
+      }
+
+      _cache[slot].codepoint = glyph.codepoint;
+      _cache[slot].lastUsed = ++_accessCounter;
+      const bool hasInk = readSuccess && bitmapHasInk(_cache[slot].bitmap, glyph.metrics.width, glyph.metrics.height);
+      _cache[slot].notFound =
+          !readSuccess || (!hasInk && !isAdvanceOnlyWhitespace(glyph.codepoint) && glyph.codepoint > 0x7F);
+      _cache[slot].metrics = glyph.metrics;
+      if (_cache[slot].metrics.advanceX == 0 && glyph.codepoint >= 0x2000 && glyph.codepoint <= 0x200F) {
+        _cache[slot].metrics.advanceX = _charWidth / 3;
+      }
+
+      const int hash = hashCodepoint(glyph.codepoint);
+      for (int i = 0; i < CACHE_SIZE; i++) {
+        const int idx = (hash + i) % CACHE_SIZE;
+        if (_hashTable[idx] == -1) {
+          _hashTable[idx] = slot;
+          break;
+        }
+      }
+      loaded++;
+    }
+
+    LOG_DBG("EFT", "Preload done: %zu loaded, %zu already cached, took %lums", loaded, skipped, millis() - startTime);
+    return;
+  }
+
   for (uint32_t cp : sorted) {
     if (findInCache(cp) >= 0) {
+      // Refresh LRU state for prefetched glyphs. Without this, cached glyphs
+      // needed by the next page can be evicted by the uncached glyphs loaded in
+      // the same preload pass.
+      getGlyph(cp);
       skipped++;
       continue;
     }

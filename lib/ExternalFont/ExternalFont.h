@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "ExternalFontCachePolicy.h"
+
 struct ExternalGlyphMetrics {
   uint8_t width = 0;
   uint8_t height = 0;
@@ -92,6 +94,7 @@ class ExternalFont {
   const char* getFontName() const { return _fontName; }
   uint8_t getFontSize() const { return _fontSize; }
   size_t getCacheCapacity() const { return CACHE_SIZE; }
+  size_t getPreloadLimit() const { return PRELOAD_LIMIT; }
 
   bool isLoaded() const { return _isLoaded; }
   bool isRichMetricsFormat() const { return _isRichMetricsFormat; }
@@ -142,9 +145,10 @@ class ExternalFont {
   uint32_t _bitmapOffset = 0;  // file offset of the bitmap blob
 
   // LRU cache - dynamically allocated on load(), freed on unload()
-  // 128 glyphs for CJK text rendering (~34KB per font when loaded).
+  // 160 glyphs for CJK text rendering (~44KB per font when loaded).
   // Memory is only allocated when an external font is actually used.
-  static constexpr int CACHE_SIZE = 128;       // 128 glyphs
+  static constexpr int CACHE_SIZE = ExternalFontCachePolicy::kGlyphCacheSize;
+  static constexpr int PRELOAD_LIMIT = ExternalFontCachePolicy::kPreloadLimit;
   static constexpr int MAX_GLYPH_BYTES = 260;  // Max 260 bytes per glyph (e.g. up to 38x52)
 
   struct CacheEntry {
@@ -157,7 +161,8 @@ class ExternalFont {
   CacheEntry* _cache = nullptr;  // Dynamically allocated on load()
   uint32_t _accessCounter = 0;
 
-  // Sequential read fast path - skip seek if reading consecutive glyphs
+  // Sequential read fast path - stores the absolute file offset expected for
+  // the next read, so adjacent glyph records/bitmaps can skip seek().
   mutable uint32_t _lastReadOffset = 0;
   mutable bool _hasLastReadOffset = false;
 
