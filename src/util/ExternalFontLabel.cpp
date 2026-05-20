@@ -1,5 +1,6 @@
 #include "ExternalFontLabel.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -12,9 +13,8 @@ std::string getFontFormatLabel(const char* filename) {
   }
 
   std::string format = ext + 1;
-  for (char& ch : format) {
-    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-  }
+  std::transform(format.begin(), format.end(), format.begin(),
+                 [](const unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
   return format;
 }
 }  // namespace

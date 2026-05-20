@@ -14,8 +14,8 @@ void expect(bool condition, const char* message) {
 }  // namespace
 
 int main() {
-  expect(buildExternalFontLabel("MyFont_16_8x12.xbf2", "MyFont", 16, true) == "MyFont(16pt)[XBF2]",
-         "Expected XBF2 font label to include uppercase format suffix in brackets");
+  expect(buildExternalFontLabel("MyFont_16_8x12.epdf", "MyFont", 16, true) == "MyFont(16pt)[EPDF]",
+         "Expected EPDF font label to include uppercase format suffix in brackets");
   expect(buildExternalFontLabel("OtherFont_16_8x12.bin", "OtherFont", 16, true) == "OtherFont(16pt)[BIN]",
          "Expected legacy bin font label to include BIN format suffix in brackets");
   expect(buildExternalFontLabel("OtherFont_16_8x12.bin", "OtherFont", 16, false) == "OtherFont(16pt)[BIN] [!]",
