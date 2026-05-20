@@ -150,6 +150,7 @@ class SettingsActivity final : public Activity {
 
   int initialCategoryIndex = 0;
   int initialSettingIndex = 0;
+  bool forceFullSettingsRefresh = false;
 
   static constexpr int categoryCount = 4;
   static const StrId categoryNames[categoryCount];

@@ -205,6 +205,7 @@ void SettingsActivity::toggleCurrentSetting() {
     // Apply dark mode change immediately (renderer needs explicit notification)
     if (setting.nameId == StrId::STR_COLOR_MODE) {
       renderer.setDarkMode(SETTINGS.colorMode == CrossPointSettings::COLOR_MODE::DARK_MODE);
+      forceFullSettingsRefresh = true;
     }
   } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
     // Line spacing uses a slider activity (0.8x-2.5x) for finer control.
@@ -361,8 +362,18 @@ void SettingsActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  // Always use standard refresh for settings screen
-  renderer.displayBuffer();
+  if (forceFullSettingsRefresh) {
+    forceFullSettingsRefresh = false;
+    if (renderer.isDarkMode()) {
+      renderer.displayBufferDarkRedrive();
+    } else {
+      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    }
+  } else if (renderer.isDarkMode()) {
+    renderer.displayBufferDarkRedrive();
+  } else {
+    renderer.displayBuffer();
+  }
 }
 
 void SettingsActivity::invalidateSectionPreservingPosition() {

@@ -52,6 +52,8 @@ constexpr int READER_FONT_COUNT = sizeof(READER_FONT_IDS) / sizeof(READER_FONT_I
 // baseline for non-rich external font glyphs must be shifted down by this
 // descent amount so both paths share the same visual baseline.
 static constexpr int CJK_UI_FONT_DESCENT = 4;
+constexpr unsigned long DARK_UI_REDRIVE_MIN_INTERVAL_MS = 30000;
+constexpr uint8_t DARK_UI_FAST_REFRESHES_PER_REDRIVE = 32;
 
 // Check if a Unicode codepoint is CJK (Chinese/Japanese/Korean)
 // Only these characters should use the external font width
@@ -209,6 +211,67 @@ static inline void rotateCoordinates(const GfxRenderer::Orientation orientation,
       break;
     }
   }
+}
+
+struct PhysicalRect {
+  uint16_t x = 0;
+  uint16_t y = 0;
+  uint16_t width = 0;
+  uint16_t height = 0;
+};
+
+bool logicalRectToPhysicalWindow(const GfxRenderer::Orientation orientation, int x, int y, int width, int height,
+                                 const int screenWidth, const int screenHeight, const uint16_t panelWidth,
+                                 const uint16_t panelHeight, PhysicalRect* out) {
+  if (out == nullptr || width <= 0 || height <= 0) {
+    return false;
+  }
+
+  const int x0 = std::max(0, x);
+  const int y0 = std::max(0, y);
+  const int x1 = std::min(screenWidth - 1, x + width - 1);
+  const int y1 = std::min(screenHeight - 1, y + height - 1);
+  if (x0 > x1 || y0 > y1) {
+    return false;
+  }
+
+  int px0 = 0;
+  int py0 = 0;
+  int px1 = 0;
+  int py1 = 0;
+  int px2 = 0;
+  int py2 = 0;
+  int px3 = 0;
+  int py3 = 0;
+  rotateCoordinates(orientation, x0, y0, &px0, &py0, panelWidth, panelHeight);
+  rotateCoordinates(orientation, x1, y0, &px1, &py1, panelWidth, panelHeight);
+  rotateCoordinates(orientation, x0, y1, &px2, &py2, panelWidth, panelHeight);
+  rotateCoordinates(orientation, x1, y1, &px3, &py3, panelWidth, panelHeight);
+
+  int minX = std::min({px0, px1, px2, px3});
+  int maxX = std::max({px0, px1, px2, px3});
+  int minY = std::min({py0, py1, py2, py3});
+  int maxY = std::max({py0, py1, py2, py3});
+
+  minX = std::max(0, minX);
+  maxX = std::min(static_cast<int>(panelWidth) - 1, maxX);
+  minY = std::max(0, minY);
+  maxY = std::min(static_cast<int>(panelHeight) - 1, maxY);
+  if (minX > maxX || minY > maxY) {
+    return false;
+  }
+
+  const int alignedX = (minX / 8) * 8;
+  const int alignedEndX = std::min(static_cast<int>(panelWidth), ((maxX + 8) / 8) * 8);
+  if (alignedX >= alignedEndX) {
+    return false;
+  }
+
+  out->x = static_cast<uint16_t>(alignedX);
+  out->y = static_cast<uint16_t>(minY);
+  out->width = static_cast<uint16_t>(alignedEndX - alignedX);
+  out->height = static_cast<uint16_t>(maxY - minY + 1);
+  return out->width > 0 && out->height > 0;
 }
 
 enum class TextRotation { None, Rotated90CW };
@@ -1378,17 +1441,54 @@ void GfxRenderer::invertScreen() const {
   }
 }
 
+void GfxRenderer::setPartialUpdateRect(int x, int y, int width, int height) const {
+  partialX_ = x;
+  partialY_ = y;
+  partialW_ = width;
+  partialH_ = height;
+}
+
 void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
-  // In dark mode, use DARK_REDRIVE for FAST_REFRESH to re-drive all pixels and
-  // prevent ghosting accumulation on the black background. HALF/FULL_REFRESH modes
-  // already drive all pixels, so they don't need substitution.
-  if (darkMode && refreshMode == HalDisplay::FAST_REFRESH) {
-    display.displayBuffer(HalDisplay::DARK_REDRIVE, fadingFix);
-  } else {
-    display.displayBuffer(refreshMode, fadingFix);
+
+  const bool hasPartialUpdate = partialW_ > 0 && partialH_ > 0;
+  if (hasPartialUpdate) {
+    PhysicalRect physicalWindow;
+    const bool hasPhysicalWindow =
+        refreshMode == HalDisplay::FAST_REFRESH &&
+        logicalRectToPhysicalWindow(orientation, partialX_, partialY_, partialW_, partialH_, getScreenWidth(),
+                                    getScreenHeight(), panelWidth, panelHeight, &physicalWindow);
+    partialX_ = partialY_ = partialW_ = partialH_ = 0;
+    if (hasPhysicalWindow) {
+      if (darkMode) {
+        display.displayWindowDarkRedrive(physicalWindow.x, physicalWindow.y, physicalWindow.width,
+                                         physicalWindow.height, fadingFix);
+      } else {
+        display.displayWindow(physicalWindow.x, physicalWindow.y, physicalWindow.width, physicalWindow.height,
+                              fadingFix);
+      }
+      return;
+    }
   }
+
+  if (darkMode && refreshMode == HalDisplay::FAST_REFRESH) {
+    const unsigned long now = millis();
+    if (!darkUiRedrivePrimed) {
+      darkUiRedrivePrimed = true;
+      lastDarkUiRedriveMs = now;
+      darkUiFastRefreshesSinceRedrive = 0;
+    } else if (now - lastDarkUiRedriveMs >= DARK_UI_REDRIVE_MIN_INTERVAL_MS ||
+               darkUiFastRefreshesSinceRedrive >= DARK_UI_FAST_REFRESHES_PER_REDRIVE) {
+      lastDarkUiRedriveMs = now;
+      darkUiFastRefreshesSinceRedrive = 0;
+      display.displayBuffer(HalDisplay::DARK_REDRIVE, fadingFix);
+      return;
+    }
+    darkUiFastRefreshesSinceRedrive++;
+  }
+
+  display.displayBuffer(refreshMode, fadingFix);
 }
 
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,

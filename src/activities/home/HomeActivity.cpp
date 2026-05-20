@@ -8,6 +8,7 @@
 #include <Utf8.h>
 #include <Xtc.h>
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -173,16 +174,26 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferStored = false;
 }
 
+void HomeActivity::setMenuPartialUpdateIfSafe(const int oldIndex, const int newIndex) {
+  const int firstMenuIndex = static_cast<int>(recentBooks.size());
+  menuOnlyPartialUpdate =
+      firstRenderDone && oldIndex >= firstMenuIndex && newIndex >= firstMenuIndex && oldIndex != newIndex;
+}
+
 void HomeActivity::loop() {
   const int menuCount = getMenuItemCount();
 
   buttonNavigator.onNext([this, menuCount] {
-    selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
+    const int nextIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
+    setMenuPartialUpdateIfSafe(selectorIndex, nextIndex);
+    selectorIndex = nextIndex;
     requestUpdate();
   });
 
   buttonNavigator.onPrevious([this, menuCount] {
-    selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
+    const int previousIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
+    setMenuPartialUpdateIfSafe(selectorIndex, previousIndex);
+    selectorIndex = previousIndex;
     requestUpdate();
   });
 
@@ -217,39 +228,51 @@ void HomeActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  renderer.clearScreen();
-  bool bufferRestored = coverBufferStored && restoreCoverBuffer();
-
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);
-
-  GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
-                          recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
-                          std::bind(&HomeActivity::storeCoverBuffer, this));
-
-  // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings};
 
   if (hasOpdsUrl) {
-    // Insert OPDS Browser after My Library
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + 2, Library);
   }
 
+  const auto hintInsets = GUI.getButtonHintInsets(renderer);
+  const int menuTop = metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.verticalSpacing;
+  const int menuHeight = std::max(0, pageHeight - hintInsets.bottom - menuTop);
+  const Rect menuRect{hintInsets.left, menuTop, pageWidth - hintInsets.left - hintInsets.right, menuHeight};
+
+  if (menuOnlyPartialUpdate) {
+    renderer.fillRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height, false);
+    renderer.setPartialUpdateRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height);
+  } else {
+    renderer.clearScreen();
+  }
+  bool bufferRestored = !menuOnlyPartialUpdate && coverBufferStored && restoreCoverBuffer();
+
+  if (!menuOnlyPartialUpdate) {
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);
+
+    GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
+                            recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
+                            std::bind(&HomeActivity::storeCoverBuffer, this));
+  }
+
   GUI.drawButtonMenu(
-      renderer,
-      Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.verticalSpacing, pageWidth,
-           pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing * 2 +
-                         metrics.buttonHintsHeight)},
-      static_cast<int>(menuItems.size()), selectorIndex - recentBooks.size(),
+      renderer, menuRect, static_cast<int>(menuItems.size()), selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
 
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  renderer.displayBuffer();
+  const bool usedMenuOnlyPartialUpdate = menuOnlyPartialUpdate;
+  menuOnlyPartialUpdate = false;
+  if (renderer.isDarkMode() && !usedMenuOnlyPartialUpdate) {
+    renderer.displayBufferDarkRedrive();
+  } else {
+    renderer.displayBuffer();
+  }
 
   if (!firstRenderDone) {
     firstRenderDone = true;

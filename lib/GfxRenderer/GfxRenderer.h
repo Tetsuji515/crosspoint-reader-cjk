@@ -52,6 +52,9 @@ class GfxRenderer {
   FontDecompressor* fontDecompressor = nullptr;
   // Dark mode: true = black background, false = white background
   bool darkMode = false;
+  mutable bool darkUiRedrivePrimed = false;
+  mutable unsigned long lastDarkUiRedriveMs = 0;
+  mutable uint8_t darkUiFastRefreshesSinceRedrive = 0;
   // Whether to invert images in dark mode (user preference)
   bool invertImagesInDarkMode = false;
   // Extra spacing (in pixels) for ASCII letters/digits when using external reader font.
@@ -63,6 +66,12 @@ class GfxRenderer {
   int readerFallbackFontId = 0;
   // Skip dark mode inversion for images (cover art should not be inverted)
   mutable bool skipDarkModeForImages = false;
+  // Partial update rect in logical coordinates; when set, displayBuffer() uses
+  // windowed refresh for just this region instead of the full screen.
+  mutable int partialX_ = 0;
+  mutable int partialY_ = 0;
+  mutable int partialW_ = 0;
+  mutable int partialH_ = 0;
 
   // Mutable because drawText() is const but needs to delegate scan-mode
   // recording to the (non-const) FontCacheManager. Same pragmatic compromise
@@ -131,7 +140,13 @@ class GfxRenderer {
   void setFadingFix(const bool enabled) { fadingFix = enabled; }
 
   // Dark mode control
-  void setDarkMode(bool darkMode) { this->darkMode = darkMode; }
+  void setDarkMode(bool darkMode) {
+    if (this->darkMode != darkMode) {
+      darkUiRedrivePrimed = false;
+      darkUiFastRefreshesSinceRedrive = 0;
+    }
+    this->darkMode = darkMode;
+  }
   bool isDarkMode() const { return darkMode; }
   // When true, images are inverted along with text in dark mode.
   // When false (default), image rendering skips dark mode inversion.
@@ -155,8 +170,10 @@ class GfxRenderer {
   int getScreenHeight() const;
   void displayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
   void displayBufferDarkRedrive() const { display.displayBuffer(HalDisplay::DARK_REDRIVE, fadingFix); }
-  // EXPERIMENTAL: Windowed update - display only a rectangular region
-  // void displayWindow(int x, int y, int width, int height) const;
+  // Set a partial update region (logical coordinates). The next displayBuffer()
+  // call with FAST_REFRESH will refresh only this region instead of the full screen.
+  // Automatically cleared after use.
+  void setPartialUpdateRect(int x, int y, int width, int height) const;
   void invertScreen() const;
   void clearScreen(uint8_t color = 0xFF) const;
   void getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const;
