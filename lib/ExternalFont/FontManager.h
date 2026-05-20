@@ -61,6 +61,21 @@ class FontManager {
   void selectUiFont(int index);
 
   /**
+   * Temporarily load reader font without saving settings.
+   */
+  bool previewFont(int index);
+
+  /**
+   * Temporarily load UI font without saving settings.
+   */
+  bool previewUiFont(int index);
+
+  /**
+   * Restore reader/UI selections without saving settings.
+   */
+  void restoreFontSelection(int readerIndex, int uiIndex);
+
+  /**
    * Get currently selected reader font index
    * @return -1 means using built-in font
    */

@@ -148,6 +148,45 @@ void FontManager::selectUiFont(int index) {
   saveSettings();
 }
 
+bool FontManager::previewFont(int index) {
+  _selectedIndex = index;
+
+  if (index >= 0) {
+    return loadSelectedFont();
+  }
+
+  _activeFont.unload();
+  return true;
+}
+
+bool FontManager::previewUiFont(int index) {
+  _selectedUiIndex = index;
+
+  if (index >= 0) {
+    return loadSelectedUiFont();
+  }
+
+  _activeUiFont.unload();
+  return true;
+}
+
+void FontManager::restoreFontSelection(int readerIndex, int uiIndex) {
+  _selectedIndex = readerIndex;
+  _selectedUiIndex = uiIndex;
+
+  if (_selectedIndex >= 0) {
+    loadSelectedFont();
+  } else {
+    _activeFont.unload();
+  }
+
+  if (_selectedUiIndex >= 0) {
+    loadSelectedUiFont();
+  } else {
+    _activeUiFont.unload();
+  }
+}
+
 ExternalFont* FontManager::getActiveFont() {
   if (_selectedIndex >= 0 && _activeFont.isLoaded()) {
     return &_activeFont;

@@ -24,5 +24,5 @@ class FontSelectActivity final : public Activity {
   int selectedIndex = 0;  // Index in the current list
   int totalItems = 1;     // At least one built-in option
 
-  void handleSelection();
+  void openFontPreview();
 };

@@ -7,6 +7,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/util/FontPreviewActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ExternalFontLabel.h"
@@ -59,7 +60,7 @@ void FontSelectActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    handleSelection();
+    openFontPreview();
     return;
   }
 
@@ -80,8 +81,8 @@ void FontSelectActivity::loop() {
   }
 }
 
-void FontSelectActivity::handleSelection() {
-  LOG_DBG("FNT", "handleSelection: mode=%d, selectedIndex=%d", static_cast<int>(mode), selectedIndex);
+void FontSelectActivity::openFontPreview() {
+  LOG_DBG("FNT", "openFontPreview: mode=%d, selectedIndex=%d", static_cast<int>(mode), selectedIndex);
 
   if (mode == SelectMode::Reader) {
     if (selectedIndex < kBuiltinReaderFontCount) {
@@ -94,12 +95,28 @@ void FontSelectActivity::handleSelection() {
       // Select external reader font (skip if glyph too large)
       const int externalIndex = selectedIndex - kBuiltinReaderFontCount;
       const FontInfo* info = FontMgr.getFontInfo(externalIndex);
-      if (info && !ExternalFont::canFitGlyph(info->width, info->height)) {
+      if (!info) {
+        LOG_DBG("FNT", "Reader font index %d not found", externalIndex);
+        return;
+      }
+      if (!ExternalFont::canFitGlyph(info->width, info->height)) {
         LOG_DBG("FNT", "Font %s glyph too large (%dx%d), skipping", info->name, info->width, info->height);
         return;
       }
-      LOG_DBG("FNT", "Selecting reader font index %d", externalIndex);
-      FontMgr.selectFont(externalIndex);
+      char filePath[96];
+      snprintf(filePath, sizeof(filePath), "/fonts/%s", info->filename);
+      startActivityForResult(
+          std::make_unique<FontPreviewActivity>(renderer, mappedInput, filePath, nullptr,
+                                                mode == SelectMode::Reader ? FontPreviewActivity::ActionMask::ReaderOnly
+                                                                           : FontPreviewActivity::ActionMask::UiOnly),
+          [this](const ActivityResult& result) {
+            if (!result.isCancelled) {
+              finish();
+              return;
+            }
+            requestUpdate();
+          });
+      return;
     }
     renderer.setReaderFallbackFontId(SETTINGS.getBuiltInReaderFontId());
   } else {
@@ -111,12 +128,28 @@ void FontSelectActivity::handleSelection() {
       // Select external UI font (skip if glyph too large)
       const int externalIndex = selectedIndex - 1;
       const FontInfo* info = FontMgr.getFontInfo(externalIndex);
-      if (info && !ExternalFont::canFitGlyph(info->width, info->height)) {
+      if (!info) {
+        LOG_DBG("FNT", "UI font index %d not found", externalIndex);
+        return;
+      }
+      if (!ExternalFont::canFitGlyph(info->width, info->height)) {
         LOG_DBG("FNT", "Font %s glyph too large (%dx%d), skipping", info->name, info->width, info->height);
         return;
       }
-      LOG_DBG("FNT", "Selecting UI font index %d", externalIndex);
-      FontMgr.selectUiFont(externalIndex);
+      char filePath[96];
+      snprintf(filePath, sizeof(filePath), "/fonts/%s", info->filename);
+      startActivityForResult(
+          std::make_unique<FontPreviewActivity>(renderer, mappedInput, filePath, nullptr,
+                                                mode == SelectMode::Reader ? FontPreviewActivity::ActionMask::ReaderOnly
+                                                                           : FontPreviewActivity::ActionMask::UiOnly),
+          [this](const ActivityResult& result) {
+            if (!result.isCancelled) {
+              finish();
+              return;
+            }
+            requestUpdate();
+          });
+      return;
     }
   }
 
