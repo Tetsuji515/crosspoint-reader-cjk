@@ -39,6 +39,256 @@ CASES = [
         ],
     },
     {
+        "name": "FontSelectActivity opens preview before applying external fonts",
+        "path": ROOT / "src" / "activities" / "settings" / "FontSelectActivity.cpp",
+        "required": [
+            '#include "activities/util/FontPreviewActivity.h"',
+            'std::make_unique<FontPreviewActivity>(',
+            'mode == SelectMode::Reader ? FontPreviewActivity::ActionMask::ReaderOnly',
+            ': FontPreviewActivity::ActionMask::UiOnly',
+        ],
+        "forbidden": [
+            'void FontSelectActivity::handleSelection()',
+        ],
+    },
+    {
+        "name": "FontPreviewActivity exposes source-aware font apply actions",
+        "path": ROOT / "src" / "activities" / "util" / "FontPreviewActivity.h",
+        "required": [
+            'enum class ActionMask { ReaderAndUi, ReaderOnly, UiOnly };',
+            'void applyReaderFont();',
+            'void applyUiFont();',
+            'ActionMask actionMask;',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "FontPreviewActivity does not auto-apply on entry button release",
+        "path": ROOT / "src" / "activities" / "util" / "FontPreviewActivity.cpp",
+        "required": [
+            'mappedInput.wasPressed(MappedInputManager::Button::Confirm)',
+            'mappedInput.wasPressed(MappedInputManager::Button::Right)',
+        ],
+        "forbidden": [
+            'mappedInput.wasReleased(MappedInputManager::Button::Confirm)',
+            'mappedInput.wasReleased(MappedInputManager::Button::Right)',
+        ],
+    },
+    {
+        "name": "FontPreviewActivity avoids exit clear flash",
+        "path": ROOT / "src" / "activities" / "util" / "FontPreviewActivity.cpp",
+        "required": [
+            'void FontPreviewActivity::onExit() { Activity::onExit(); }',
+        ],
+        "forbidden": [
+            'renderer.displayBuffer(HalDisplay::FAST_REFRESH);',
+        ],
+    },
+    {
+        "name": "FontPreviewActivity avoids full refresh flicker on entry",
+        "path": ROOT / "src" / "activities" / "util" / "FontPreviewActivity.cpp",
+        "required": [
+            'LOG_DBG("FNTPREV", "displayBuffer FAST_REFRESH...");',
+            'renderer.displayBuffer();',
+        ],
+        "forbidden": [
+            'renderer.displayBuffer(HalDisplay::FULL_REFRESH);',
+            'displayBuffer FULL_REFRESH',
+        ],
+    },
+    {
+        "name": "FontPreviewActivity shows enough sample text",
+        "path": ROOT / "src" / "activities" / "util" / "FontPreviewActivity.cpp",
+        "required": [
+            'const char* SAMPLE_LINES[] = {',
+            'for (const char* sampleLine : SAMPLE_LINES)',
+            'SAMPLE_LINE_COUNT >= 6',
+            r'\xef\xbc\x8c\xe3\x80\x82\xe3\x80\x81\xef\xbc\x9b\xef\xbc\x9a\xef\xbc\x81\xef\xbc\x9f',
+        ],
+        "forbidden": [
+            'SAMPLE_LINE_CJK',
+            'SAMPLE_LINE_KANA',
+            'SAMPLE_LINE_ASCII',
+        ],
+    },
+    {
+        "name": "FontPreviewActivity wraps preview text",
+        "path": ROOT / "src" / "activities" / "util" / "FontPreviewActivity.cpp",
+        "required": [
+            'renderer.wrappedText(previewFontId, sampleLine, contentWidth, remainingLines',
+            'renderer.drawText(previewFontId, contentLeft, y, wrappedLine.c_str(), true, style);',
+        ],
+        "forbidden": [
+            'renderer.drawCenteredText(previewFontId, contentTop + static_cast<int>(i) * lineSpacing',
+        ],
+    },
+    {
+        "name": "FontPreviewActivity keeps preview font out of page chrome",
+        "path": ROOT / "src" / "activities" / "util" / "FontPreviewActivity.cpp",
+        "required": [
+            'GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, displayName.c_str(),',
+            'installPreviewFont();',
+            'restorePreviewFont();',
+            'LOG_DBG("FNTPREV", "drawButtonHints...");',
+            'FontMgr.previewUiFont(previewFontIndex);',
+            'FontMgr.previewFont(previewFontIndex);',
+        ],
+        "forbidden": [
+            'installPreviewFont();\n\n  renderer.clearScreen();',
+        ],
+    },
+    {
+        "name": "FontManager has non-persistent preview font switching",
+        "path": ROOT / "lib" / "ExternalFont" / "FontManager.cpp",
+        "required": [
+            'bool FontManager::previewFont(int index) {',
+            'bool FontManager::previewUiFont(int index) {',
+            'restoreFontSelection(int readerIndex, int uiIndex)',
+        ],
+        "forbidden": [
+            'bool FontManager::previewFont(int index) {\n  selectFont(index);',
+            'bool FontManager::previewUiFont(int index) {\n  selectUiFont(index);',
+        ],
+    },
+    {
+        "name": "BaseTheme button hints force BW render mode",
+        "path": ROOT / "src" / "components" / "themes" / "BaseTheme.cpp",
+        "required": [
+            'const auto previousRenderMode = renderer.getRenderMode();',
+            'renderer.setRenderMode(GfxRenderer::BW);',
+            'renderer.setRenderMode(previousRenderMode);',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "BaseTheme button hints follow color mode",
+        "path": ROOT / "src" / "components" / "themes" / "BaseTheme.cpp",
+        "required": [
+            'renderer.fillRect(stripX, slotY, stripWidth, hintHeight, false);',
+            'renderer.drawRect(stripX, slotY, stripWidth, hintHeight, true);',
+            'renderer.drawTextRotated90CW(UI_10_FONT_ID, textX, textY, labels[i], true);',
+            'renderer.fillRect(x, buttonTop, buttonWidth, buttonHeight, false);',
+            'renderer.drawRect(x, buttonTop, buttonWidth, buttonHeight, true);',
+            'renderer.drawText(UI_10_FONT_ID, textX, buttonTop + textYOffset, labels[i], true);',
+        ],
+        "forbidden": [
+            'renderer.fillRect(stripX, slotY, stripWidth, hintHeight, true);',
+            'renderer.fillRect(x, buttonTop, buttonWidth, buttonHeight, true);',
+        ],
+    },
+    {
+        "name": "LyraTheme button hints force BW render mode",
+        "path": ROOT / "src" / "components" / "themes" / "lyra" / "LyraTheme.cpp",
+        "required": [
+            'const auto previousRenderMode = renderer.getRenderMode();',
+            'renderer.setRenderMode(GfxRenderer::BW);',
+            'renderer.setRenderMode(previousRenderMode);',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "LyraTheme button hints follow color mode",
+        "path": ROOT / "src" / "components" / "themes" / "lyra" / "LyraTheme.cpp",
+        "required": [
+            'renderer.fillRoundedRect(stripX, slotY, stripWidth, hintHeight, cornerRadius, Color::White);',
+            'renderer.drawRoundedRect(stripX, slotY, stripWidth, hintHeight, 1, cornerRadius, /*topLeft=*/roundLeft,',
+            '/*topRight=*/roundRight, /*bottomLeft=*/roundLeft, /*bottomRight=*/roundRight, true);',
+            'renderer.drawTextRotated90CW(SMALL_FONT_ID, textX, textY, labels[i], true);',
+            'renderer.fillRoundedRect(x, buttonTop, buttonWidth, buttonHeight, cornerRadius, Color::White);',
+            'renderer.drawRoundedRect(x, buttonTop, buttonWidth, buttonHeight, 1, cornerRadius, roundTop, roundTop,',
+            'roundBottom, roundBottom, true);',
+            'renderer.drawText(SMALL_FONT_ID, textX, buttonTop + textYOffset, labels[i], true);',
+            'renderer.fillRoundedRect(x, smallButtonTop, buttonWidth, smallButtonHeight, cornerRadius, Color::White);',
+        ],
+        "forbidden": [
+            'renderer.fillRoundedRect(stripX, slotY, stripWidth, hintHeight, cornerRadius, Color::Black);',
+            'renderer.fillRoundedRect(x, buttonTop, buttonWidth, buttonHeight, cornerRadius, Color::Black);',
+            'renderer.fillRoundedRect(x, smallButtonTop, buttonWidth, smallButtonHeight, cornerRadius, Color::Black);',
+        ],
+    },
+    {
+        "name": "GfxRenderer throttles dark-mode UI redrive",
+        "path": ROOT / "lib" / "GfxRenderer" / "GfxRenderer.cpp",
+        "required": [
+            'constexpr unsigned long DARK_UI_REDRIVE_MIN_INTERVAL_MS = 30000;',
+            'constexpr uint8_t DARK_UI_FAST_REFRESHES_PER_REDRIVE = 32;',
+            'if (darkMode && refreshMode == HalDisplay::FAST_REFRESH) {',
+            'if (!darkUiRedrivePrimed) {',
+            'darkUiFastRefreshesSinceRedrive >= DARK_UI_FAST_REFRESHES_PER_REDRIVE',
+            'display.displayBuffer(HalDisplay::DARK_REDRIVE, fadingFix);',
+            'darkUiFastRefreshesSinceRedrive++;',
+            'display.displayBuffer(refreshMode, fadingFix);',
+        ],
+        "forbidden": [
+            '!darkUiRedrivePrimed || now - lastDarkUiRedriveMs >= DARK_UI_REDRIVE_MIN_INTERVAL_MS',
+        ],
+    },
+    {
+        "name": "GfxRenderer applies byte-aligned UI partial update rectangles",
+        "path": ROOT / "lib" / "GfxRenderer" / "GfxRenderer.cpp",
+        "required": [
+            'const bool hasPartialUpdate = partialW_ > 0 && partialH_ > 0;',
+            'logicalRectToPhysicalWindow(orientation, partialX_, partialY_, partialW_, partialH_, getScreenWidth(),',
+            'partialX_ = partialY_ = partialW_ = partialH_ = 0;',
+            'display.displayWindowDarkRedrive(physicalWindow.x, physicalWindow.y, physicalWindow.width,',
+            'display.displayWindow(physicalWindow.x, physicalWindow.y, physicalWindow.width, physicalWindow.height,',
+            'display.displayBuffer(refreshMode, fadingFix);',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "GfxRenderer resets dark UI redrive throttle when dark mode changes",
+        "path": ROOT / "lib" / "GfxRenderer" / "GfxRenderer.h",
+        "required": [
+            'mutable bool darkUiRedrivePrimed = false;',
+            'mutable unsigned long lastDarkUiRedriveMs = 0;',
+            'mutable uint8_t darkUiFastRefreshesSinceRedrive = 0;',
+            'darkUiRedrivePrimed = false;',
+            'darkUiFastRefreshesSinceRedrive = 0;',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "HomeActivity uses partial menu refresh for menu-only navigation",
+        "path": ROOT / "src" / "activities" / "home" / "HomeActivity.cpp",
+        "required": [
+            'setMenuPartialUpdateIfSafe(selectorIndex, nextIndex);',
+            'setMenuPartialUpdateIfSafe(selectorIndex, previousIndex);',
+            'if (menuOnlyPartialUpdate) {',
+            'renderer.fillRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height, false);',
+            'renderer.setPartialUpdateRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height);',
+            'GUI.drawButtonMenu(',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "HomeActivity tracks menu-only partial refresh state",
+        "path": ROOT / "src" / "activities" / "home" / "HomeActivity.h",
+        "required": [
+            'bool menuOnlyPartialUpdate = false;',
+            'void setMenuPartialUpdateIfSafe(int oldIndex, int newIndex);',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "EInkDisplay window refresh syncs dual-buffer previous frame",
+        "path": ROOT / "open-x4-sdk" / "libs" / "display" / "EInkDisplay" / "src" / "EInkDisplay.cpp",
+        "required": [
+            'memcpy(&frameBufferActive[dstOffset], &windowBuffer[row * windowWidthBytes], windowWidthBytes);',
+            'writeRamBuffer(CMD_WRITE_RAM_RED, windowBuffer.data(), windowBufferSize);',
+        ],
+        "forbidden": [],
+    },
+    {
+        "name": "ReaderUtils still owns dark-mode reader redrive",
+        "path": ROOT / "src" / "activities" / "reader" / "ReaderUtils.h",
+        "required": [
+            'case ReaderRuntime::RefreshMode::DarkRedrive:',
+            'renderer.displayBufferDarkRedrive();',
+        ],
+        "forbidden": [],
+    },
+    {
         "name": "CrossPointWebServer options use shared external font label helper",
         "path": ROOT / "src" / "network" / "CrossPointWebServer.cpp",
         "required": [

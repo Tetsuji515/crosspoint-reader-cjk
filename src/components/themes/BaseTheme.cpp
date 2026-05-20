@@ -176,6 +176,9 @@ void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const si
 void BaseTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                 const char* btn4) const {
   const auto orient = renderer.getOrientation();
+  const auto previousRenderMode = renderer.getRenderMode();
+  renderer.setRenderMode(GfxRenderer::BW);
+  const auto restoreRenderMode = [&renderer, previousRenderMode]() { renderer.setRenderMode(previousRenderMode); };
 
   // Landscape orientations: the X4's front bezel is on the panel's right
   // short edge (verified by the rotation transform — Portrait labels at
@@ -212,14 +215,15 @@ void BaseTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
       const int slotY = isCCW ? (screenHeight - hintHeight - positions[i]) : positions[i];
 
       renderer.fillRect(stripX, slotY, stripWidth, hintHeight, false);
-      renderer.drawRect(stripX, slotY, stripWidth, hintHeight);
+      renderer.drawRect(stripX, slotY, stripWidth, hintHeight, true);
 
       const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i]);
       const int textHeight = renderer.getTextHeight(UI_10_FONT_ID);
       const int textX = stripX + (stripWidth - textHeight) / 2 - textYOffset;
       const int textY = slotY + (hintHeight + textWidth) / 2;
-      renderer.drawTextRotated90CW(UI_10_FONT_ID, textX, textY, labels[i]);
+      renderer.drawTextRotated90CW(UI_10_FONT_ID, textX, textY, labels[i], true);
     }
+    restoreRenderMode();
     return;
   }
 
@@ -241,12 +245,13 @@ void BaseTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
     if (labels[i] != nullptr && labels[i][0] != '\0') {
       const int x = buttonPositions[i];
       renderer.fillRect(x, buttonTop, buttonWidth, buttonHeight, false);
-      renderer.drawRect(x, buttonTop, buttonWidth, buttonHeight);
+      renderer.drawRect(x, buttonTop, buttonWidth, buttonHeight, true);
       const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i]);
       const int textX = x + (buttonWidth - 1 - textWidth) / 2;
-      renderer.drawText(UI_10_FONT_ID, textX, buttonTop + textYOffset, labels[i]);
+      renderer.drawText(UI_10_FONT_ID, textX, buttonTop + textYOffset, labels[i], true);
     }
   }
+  restoreRenderMode();
 }
 
 void BaseTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const {

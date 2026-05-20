@@ -338,6 +338,9 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
 void LyraTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                 const char* btn4) const {
   const auto orient = renderer.getOrientation();
+  const auto previousRenderMode = renderer.getRenderMode();
+  renderer.setRenderMode(GfxRenderer::BW);
+  const auto restoreRenderMode = [&renderer, previousRenderMode]() { renderer.setRenderMode(previousRenderMode); };
 
   // Landscape orientations: front bezel maps to a vertical edge of the logical
   // landscape screen (right in CCW = native panel, left in CW = 180° from
@@ -375,8 +378,9 @@ void LyraTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
       const int textHeight = renderer.getTextHeight(SMALL_FONT_ID);
       const int textX = stripX + (stripWidth - textHeight) / 2 - textYOffset;
       const int textY = slotY + (hintHeight + textWidth) / 2;
-      renderer.drawTextRotated90CW(SMALL_FONT_ID, textX, textY, labels[i]);
+      renderer.drawTextRotated90CW(SMALL_FONT_ID, textX, textY, labels[i], true);
     }
+    restoreRenderMode();
     return;
   }
 
@@ -406,7 +410,7 @@ void LyraTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
                                roundBottom, roundBottom, true);
       const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, labels[i]);
       const int textX = x + (buttonWidth - 1 - textWidth) / 2;
-      renderer.drawText(SMALL_FONT_ID, textX, buttonTop + textYOffset, labels[i]);
+      renderer.drawText(SMALL_FONT_ID, textX, buttonTop + textYOffset, labels[i], true);
     } else {
       // Draw the filled background and border for a SMALL-sized button
       renderer.fillRoundedRect(x, smallButtonTop, buttonWidth, smallButtonHeight, cornerRadius, Color::White);
@@ -414,6 +418,7 @@ void LyraTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
                                roundBottom, roundBottom, true);
     }
   }
+  restoreRenderMode();
 }
 
 void LyraTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const {
