@@ -45,7 +45,8 @@ EInkDisplay::RefreshMode convertRefreshMode(HalDisplay::RefreshMode mode) {
     case HalDisplay::HALF_REFRESH:
       return EInkDisplay::HALF_REFRESH;
     case HalDisplay::DARK_REDRIVE:
-      return EInkDisplay::DARK_REDRIVE;
+      // Re-drive all pixels to reduce dark-mode ghosting (SDK has no DARK_REDRIVE mode).
+      return EInkDisplay::HALF_REFRESH;
     case HalDisplay::FAST_REFRESH:
     default:
       return EInkDisplay::FAST_REFRESH;
