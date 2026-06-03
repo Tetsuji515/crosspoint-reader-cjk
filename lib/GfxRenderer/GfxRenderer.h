@@ -84,7 +84,7 @@ class GfxRenderer {
   // should stop), false to fall through to the next strategy / EPD fallback.
   bool renderCharReader(uint32_t cp, int* x, const int* y, bool pixelState, bool isCjk) const;
   bool renderCharUiCjk(uint32_t cp, int* x, const int* y, bool pixelState) const;
-  bool renderCharUiNonCjk(uint32_t cp, int* x, const int* y, bool pixelState) const;
+  bool renderCharUiNonCjk(uint32_t cp, int* x, const int* y, bool pixelState, bool allowBuiltInUiGlyph) const;
   void renderExternalGlyph(const uint8_t* bitmap, ExternalFont* font, int* x, int lineTopY, bool pixelState,
                            const ExternalGlyphMetrics& metrics, int advanceOverride = -1, int cellClipWidth = -1) const;
   // Render CJK character using built-in UI font (from PROGMEM)

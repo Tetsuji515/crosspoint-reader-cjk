@@ -249,26 +249,103 @@ CASES = [
         "forbidden": [],
     },
     {
-        "name": "HomeActivity uses partial menu refresh for menu-only navigation",
+        "name": "HomeActivity fully redraws home screen instead of partial menu refresh",
         "path": ROOT / "src" / "activities" / "home" / "HomeActivity.cpp",
         "required": [
-            'setMenuPartialUpdateIfSafe(selectorIndex, nextIndex);',
-            'setMenuPartialUpdateIfSafe(selectorIndex, previousIndex);',
-            'if (menuOnlyPartialUpdate) {',
-            'renderer.fillRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height, false);',
-            'renderer.setPartialUpdateRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height);',
+            'renderer.clearScreen();',
+            'bool bufferRestored = coverBufferStored && restoreCoverBuffer();',
+            'GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);',
+            'GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},',
             'GUI.drawButtonMenu(',
+        ],
+        "forbidden": [
+            'setPartialUpdateRect(',
+            'menuOnlyPartialUpdate',
+            'setMenuPartialUpdateIfSafe(',
+        ],
+    },
+    {
+        "name": "HomeActivity no longer tracks menu-only partial refresh state",
+        "path": ROOT / "src" / "activities" / "home" / "HomeActivity.h",
+        "required": [
+            'bool coverBufferDarkMode = false;',
+        ],
+        "forbidden": [
+            'bool menuOnlyPartialUpdate = false;',
+            'bool fullRedrawRequired = false;',
+            'void setMenuPartialUpdateIfSafe(int oldIndex, int newIndex);',
+        ],
+    },
+    {
+        "name": "HomeActivity invalidates cached cover framebuffer across color-mode changes",
+        "path": ROOT / "src" / "activities" / "home" / "HomeActivity.cpp",
+        "required": [
+            'coverBufferDarkMode = renderer.isDarkMode();',
+            'if (coverBufferDarkMode != renderer.isDarkMode()) {',
+            'freeCoverBuffer();',
+            'coverRendered = false;',
         ],
         "forbidden": [],
     },
     {
-        "name": "HomeActivity tracks menu-only partial refresh state",
-        "path": ROOT / "src" / "activities" / "home" / "HomeActivity.h",
+        "name": "LyraTheme stores cover cache before selected-state overlay",
+        "path": ROOT / "src" / "components" / "themes" / "lyra" / "LyraTheme.cpp",
         "required": [
-            'bool menuOnlyPartialUpdate = false;',
-            'void setMenuPartialUpdateIfSafe(int oldIndex, int newIndex);',
+            'renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,',
+            'coverBufferStored = storeCoverBuffer();',
+            'coverRendered = coverBufferStored;  // Only consider it rendered if we successfully stored the buffer',
+            'bool bookSelected = (selectorIndex == 0);',
+            'if (bookSelected) {',
         ],
         "forbidden": [],
+        "ordered_required": [
+            'renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, coverWidth,',
+            'coverBufferStored = storeCoverBuffer();',
+            'coverRendered = coverBufferStored;  // Only consider it rendered if we successfully stored the buffer',
+            'bool bookSelected = (selectorIndex == 0);',
+            'if (bookSelected) {',
+        ],
+    },
+    {
+        "name": "Lyra3CoversTheme stores cover cache before selected-state overlay",
+        "path": ROOT / "src" / "components" / "themes" / "lyra" / "Lyra3CoversTheme.cpp",
+        "required": [
+            'renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, tileWidth - 2 * hPaddingInSelection,',
+            'coverBufferStored = storeCoverBuffer();',
+            'coverRendered = coverBufferStored;  // Only consider it rendered if we successfully stored the buffer',
+            'bool bookSelected = (selectorIndex == i);',
+            'if (bookSelected) {',
+        ],
+        "forbidden": [],
+        "ordered_required": [
+            'renderer.drawRect(tileX + hPaddingInSelection, tileY + hPaddingInSelection, tileWidth - 2 * hPaddingInSelection,',
+            'coverBufferStored = storeCoverBuffer();',
+            'coverRendered = coverBufferStored;  // Only consider it rendered if we successfully stored the buffer',
+            'bool bookSelected = (selectorIndex == i);',
+            'if (bookSelected) {',
+        ],
+    },
+    {
+        "name": "Epub thumbnail cache path is versioned",
+        "path": ROOT / "lib" / "Epub" / "Epub.cpp",
+        "required": [
+            'constexpr int THUMB_BMP_CACHE_VERSION = 2;',
+            'return cachePath + "/thumb_v" + std::to_string(THUMB_BMP_CACHE_VERSION) + "_" + std::to_string(height) + ".bmp";',
+        ],
+        "forbidden": [
+            'return cachePath + "/thumb_" + std::to_string(height) + ".bmp";',
+        ],
+    },
+    {
+        "name": "Xtc thumbnail cache path is versioned",
+        "path": ROOT / "lib" / "Xtc" / "Xtc.cpp",
+        "required": [
+            'constexpr int THUMB_BMP_CACHE_VERSION = 2;',
+            'return cachePath + "/thumb_v" + std::to_string(THUMB_BMP_CACHE_VERSION) + "_" + std::to_string(height) + ".bmp";',
+        ],
+        "forbidden": [
+            'return cachePath + "/thumb_" + std::to_string(height) + ".bmp";',
+        ],
     },
     {
         "name": "EInkDisplay window refresh syncs dual-buffer previous frame",

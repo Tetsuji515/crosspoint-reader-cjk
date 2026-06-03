@@ -260,8 +260,14 @@ bool Xtc::generateCoverBmp() const {
   return true;
 }
 
-std::string Xtc::getThumbBmpPath() const { return cachePath + "/thumb_[HEIGHT].bmp"; }
-std::string Xtc::getThumbBmpPath(int height) const { return cachePath + "/thumb_" + std::to_string(height) + ".bmp"; }
+namespace {
+constexpr int THUMB_BMP_CACHE_VERSION = 2;
+}
+
+std::string Xtc::getThumbBmpPath() const { return cachePath + "/thumb_v2_[HEIGHT].bmp"; }
+std::string Xtc::getThumbBmpPath(int height) const {
+  return cachePath + "/thumb_v" + std::to_string(THUMB_BMP_CACHE_VERSION) + "_" + std::to_string(height) + ".bmp";
+}
 
 bool Xtc::generateThumbBmp(int height) const {
   // Already generated

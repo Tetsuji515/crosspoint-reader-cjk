@@ -148,11 +148,17 @@ bool HomeActivity::storeCoverBuffer() {
   }
 
   memcpy(coverBuffer, frameBuffer, bufferSize);
+  coverBufferDarkMode = renderer.isDarkMode();
   return true;
 }
 
 bool HomeActivity::restoreCoverBuffer() {
   if (!coverBuffer) {
+    return false;
+  }
+  if (coverBufferDarkMode != renderer.isDarkMode()) {
+    freeCoverBuffer();
+    coverRendered = false;
     return false;
   }
 
@@ -174,26 +180,16 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferStored = false;
 }
 
-void HomeActivity::setMenuPartialUpdateIfSafe(const int oldIndex, const int newIndex) {
-  const int firstMenuIndex = static_cast<int>(recentBooks.size());
-  menuOnlyPartialUpdate =
-      firstRenderDone && oldIndex >= firstMenuIndex && newIndex >= firstMenuIndex && oldIndex != newIndex;
-}
-
 void HomeActivity::loop() {
   const int menuCount = getMenuItemCount();
 
   buttonNavigator.onNext([this, menuCount] {
-    const int nextIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
-    setMenuPartialUpdateIfSafe(selectorIndex, nextIndex);
-    selectorIndex = nextIndex;
+    selectorIndex = ButtonNavigator::nextIndex(selectorIndex, menuCount);
     requestUpdate();
   });
 
   buttonNavigator.onPrevious([this, menuCount] {
-    const int previousIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
-    setMenuPartialUpdateIfSafe(selectorIndex, previousIndex);
-    selectorIndex = previousIndex;
+    selectorIndex = ButtonNavigator::previousIndex(selectorIndex, menuCount);
     requestUpdate();
   });
 
@@ -242,21 +238,14 @@ void HomeActivity::render(RenderLock&&) {
   const int menuHeight = std::max(0, pageHeight - hintInsets.bottom - menuTop);
   const Rect menuRect{hintInsets.left, menuTop, pageWidth - hintInsets.left - hintInsets.right, menuHeight};
 
-  if (menuOnlyPartialUpdate) {
-    renderer.fillRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height, false);
-    renderer.setPartialUpdateRect(menuRect.x, menuRect.y, menuRect.width, menuRect.height);
-  } else {
-    renderer.clearScreen();
-  }
-  bool bufferRestored = !menuOnlyPartialUpdate && coverBufferStored && restoreCoverBuffer();
+  renderer.clearScreen();
+  bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
-  if (!menuOnlyPartialUpdate) {
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding}, nullptr);
 
-    GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
-                            recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
-                            std::bind(&HomeActivity::storeCoverBuffer, this));
-  }
+  GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
+                          recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
+                          std::bind(&HomeActivity::storeCoverBuffer, this));
 
   GUI.drawButtonMenu(
       renderer, menuRect, static_cast<int>(menuItems.size()), selectorIndex - recentBooks.size(),
@@ -266,9 +255,7 @@ void HomeActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  const bool usedMenuOnlyPartialUpdate = menuOnlyPartialUpdate;
-  menuOnlyPartialUpdate = false;
-  if (renderer.isDarkMode() && !usedMenuOnlyPartialUpdate) {
+  if (renderer.isDarkMode()) {
     renderer.displayBufferDarkRedrive();
   } else {
     renderer.displayBuffer();

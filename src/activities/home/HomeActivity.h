@@ -17,7 +17,7 @@ class HomeActivity final : public Activity {
   bool hasOpdsUrl = false;
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored
-  bool menuOnlyPartialUpdate = false;
+  bool coverBufferDarkMode = false;
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
   std::vector<RecentBook> recentBooks;
 
@@ -27,7 +27,6 @@ class HomeActivity final : public Activity {
   void freeCoverBuffer();     // Free the stored cover buffer
   void loadRecentBooks(int maxBooks);
   void loadRecentCovers(int coverHeight);
-  void setMenuPartialUpdateIfSafe(int oldIndex, int newIndex);
 
  public:
   explicit HomeActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

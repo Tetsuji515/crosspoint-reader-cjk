@@ -520,13 +520,21 @@ int GfxRenderer::getTextWidthUiMixed(const int effectiveFontId, const char* text
     }
   }
 
+  const auto fontIt = fontMap.find(effectiveFontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found in UI CJK path", effectiveFontId);
+    return 0;
+  }
+  const EpdFontFamily& fontFamily = fontIt->second;
+
   // Check if text contains characters that need CJK/external font handling
   const char* checkPtr = text;
   bool needsSpecialHandling = false;
   uint32_t testCp;
   while ((testCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&checkPtr)))) {
-    if (CjkUiFont20::hasCjkUiGlyph(testCp) || isCjkCodepoint(testCp) ||
-        (extUiFirst && uiExtFont && uiExtFont->getGlyph(testCp))) {
+    if ((CjkUiFont20::hasCjkUiGlyph(testCp) &&
+         (isCjkCodepoint(testCp) || fontFamily.getGlyph(testCp, style) == nullptr)) ||
+        isCjkCodepoint(testCp) || (extUiFirst && uiExtFont && uiExtFont->getGlyph(testCp))) {
       needsSpecialHandling = true;
       break;
     }
@@ -538,12 +546,6 @@ int GfxRenderer::getTextWidthUiMixed(const int effectiveFontId, const char* text
 
   int width = 0;
   const char* ptr = text;
-  const auto fontIt = fontMap.find(effectiveFontId);
-  if (fontIt == fontMap.end()) {
-    LOG_ERR("GFX", "Font %d not found in UI CJK path", effectiveFontId);
-    return 0;
-  }
-  const EpdFontFamily& fontFamily = fontIt->second;
   uint32_t cp;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&ptr)))) {
     bool hasWidth = false;
@@ -567,7 +569,8 @@ int GfxRenderer::getTextWidthUiMixed(const int effectiveFontId, const char* text
 
     // Built-in CJK UI font
     if (!hasWidth) {
-      uint8_t actualWidth = CjkUiFont20::getCjkUiGlyphWidth(cp);
+      uint8_t actualWidth =
+          (isCjkCodepoint(cp) || fontFamily.getGlyph(cp, style) == nullptr) ? CjkUiFont20::getCjkUiGlyphWidth(cp) : 0;
       if (actualWidth > 0) {
         if (actualWidth >= 20) {
           actualWidth = 18;
@@ -2383,7 +2386,8 @@ bool GfxRenderer::renderCharUiCjk(const uint32_t cp, int* x, const int* y, const
   return false;
 }
 
-bool GfxRenderer::renderCharUiNonCjk(const uint32_t cp, int* x, const int* y, const bool pixelState) const {
+bool GfxRenderer::renderCharUiNonCjk(const uint32_t cp, int* x, const int* y, const bool pixelState,
+                                     const bool allowBuiltInUiGlyph) const {
   FontManager& fm = FontManager::getInstance();
   const bool useExtUiFirst = fm.isUiFontEnabled();
 
@@ -2408,7 +2412,7 @@ bool GfxRenderer::renderCharUiNonCjk(const uint32_t cp, int* x, const int* y, co
   }
 
   // Built-in CJK UI font (covers some non-CJK punctuation/symbols too)
-  if (CjkUiFont20::hasCjkUiGlyph(cp)) {
+  if (allowBuiltInUiGlyph && CjkUiFont20::hasCjkUiGlyph(cp)) {
     renderBuiltinCjkGlyph(cp, x, *y, pixelState);
     return true;
   }
@@ -2452,7 +2456,8 @@ void GfxRenderer::renderChar(const int fontId, const EpdFontFamily& fontFamily, 
   } else if (isCjk) {
     if (renderCharUiCjk(cp, x, y, pixelState)) return;
   } else {
-    if (renderCharUiNonCjk(cp, x, y, pixelState)) return;
+    const bool allowBuiltInUiGlyph = fontFamily.getGlyph(cp, style) == nullptr;
+    if (renderCharUiNonCjk(cp, x, y, pixelState, allowBuiltInUiGlyph)) return;
   }
 
   // EPD font fallback
