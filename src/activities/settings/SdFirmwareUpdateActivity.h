@@ -7,7 +7,7 @@
 class SdFirmwareUpdateActivity final : public Activity {
  public:
   explicit SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("SdFirmwareUpdate", renderer, mappedInput) {}
+      : Activity("SdFirmwareUpdate", renderer, mappedInput), candidates{} {}
 
   void onEnter() override;
   void onExit() override;

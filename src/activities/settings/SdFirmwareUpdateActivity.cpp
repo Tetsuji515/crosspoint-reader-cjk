@@ -298,9 +298,9 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
   }
 
   const auto top = (pageHeight - height) / 2;
-  float updaterProgress = 0;
 
   if (state == INSTALLING) {
+    float updaterProgress = 0;
     const size_t processed = updater.installer().getProcessedSize();
     const size_t total = updater.installer().getTotalSize();
     if (total > 0) {
