@@ -53,6 +53,9 @@ jobs:
       - name: Install PlatformIO Core
         run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
 
+      - name: Install font generation dependencies
+        run: uv pip install --system -U Pillow
+
       - name: Run cppcheck
         run: pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
 
@@ -75,6 +78,12 @@ jobs:
 
       - name: Install PlatformIO Core
         run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+
+      - name: Install font generation dependencies
+        run: uv pip install --system -U Pillow
+
+      - name: Check built-in CJK UI font charset generation
+        run: python3 scripts/check_cjk_ui_font_charset.py
 
       - name: Build CrossPoint
         run: |

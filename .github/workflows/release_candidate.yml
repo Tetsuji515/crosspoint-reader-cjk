@@ -25,6 +25,9 @@ jobs:
       - name: Install PlatformIO Core
         run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
 
+      - name: Install font generation dependencies
+        run: uv pip install --system -U Pillow
+
       - name: Extract env
         run: |
           echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV

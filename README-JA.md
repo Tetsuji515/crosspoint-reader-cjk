@@ -88,6 +88,7 @@
 
 * **PlatformIO Core** (`pio`)
 * Python 3.8以上
+* Pillow (`python3 -m pip install Pillow`)
 * USB-C ケーブル
 * Xteink X4
 
@@ -112,9 +113,11 @@ pio run --target upload
 
 ### フォント生成
 
-- `tools/generate_cjk_ui_font.py`
+- `scripts/generate_cjk_ui_font.py`
 
 - [DotInk (点墨)](https://apps.apple.com/us/app/dotink-eink-assistant/id6754073002) (推奨：DotInk を使用して読書用フォントを生成すると、デバイス上でのプレビュー効果が確認しやすくなります)
+
+内蔵 20px UI フォントヘッダーは、PlatformIO ビルド時に `fonts/思源黑体-Bold.otf` と現在の i18n 翻訳文字から自動再生成されます。
 
 ### フォント設定
 
@@ -132,7 +135,7 @@ pio run --target upload
 - **読書用フォント**：書籍の本文テキストに使用されます。
 - **UI フォント**：メニュー、タイトル、インターフェース要素に使用されます。
 
-> メモリの制約上、内蔵フォントには非常に小さな中国語文字セット（UI 表示に必要な文字のみ）が含まれています。  
+> メモリの制約上、内蔵フォントには現在の翻訳から自動生成されたコンパクトな UI 文字セットのみが含まれています。
 > より良い使用体験を得るために、より完全な UI フォントと読書用フォントを SD カードに保存することを推奨します。  
 > フォントの生成が難しい場合は、上記で提供されているサンプルフォントをダウンロードして使用してください。
 

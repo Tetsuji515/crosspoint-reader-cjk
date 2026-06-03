@@ -88,6 +88,7 @@
 
 * **PlatformIO Core** (`pio`)
 * Python 3.8+
+* Pillow (`python3 -m pip install Pillow`)
 * USB-C 数据线
 * 阅星瞳 X4
 
@@ -112,9 +113,11 @@ pio run --target upload
 
 ### 字体生成
 
-- `tools/generate_cjk_ui_font.py`
+- `scripts/generate_cjk_ui_font.py`
 
 - [点墨](https://apps.apple.com/us/app/dotink-eink-assistant/id6754073002) (推荐使用点墨来生成阅读字体, 便于查看字体在设备上的预览效果)
+
+内置 20px UI 字体头文件会在 PlatformIO 构建时自动根据 `fonts/思源黑体-Bold.otf` 和当前 i18n 翻译字符重新生成.
 
 ### 字体配置
 
@@ -132,7 +135,7 @@ pio run --target upload
 - **阅读字体**：用于书籍内容文本
 - **UI 字体**：用于菜单、标题和界面元素
 
-> 考虑到内存压力, 所以内置字体使用中文字符集很小, 仅包含了 UI 界面所需的字符.  
+> 考虑到内存压力, 所以内置字体使用由当前翻译自动生成的精简 UI 字符集.
 > 建议在 SD 卡中存入更为完整的 UI 字体和阅读字体, 获得更好的使用体验.  
 > 若不便生成字体, 可点击下载上面提供的示例字体.
 

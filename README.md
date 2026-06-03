@@ -119,6 +119,7 @@ For detailed operation instructions, please refer to the [User Guide](./USER_GUI
 
 * **PlatformIO Core** (`pio`)
 * Python 3.8+
+* Pillow (`python3 -m pip install Pillow`)
 * USB-C Cable
 * Xteink X4
 
@@ -162,9 +163,11 @@ Minor adjustments may be required for Windows.
 
 ### Font Generation
 
-- `tools/generate_cjk_ui_font.py`
+- `scripts/generate_cjk_ui_font.py`
 
 - [DotInk](https://apps.apple.com/us/app/dotink-eink-assistant/id6754073002) (Recommended: Use DotInk to generate reading fonts for a better preview of how the font looks on the device).
+
+The built-in 20px UI font header is regenerated automatically during PlatformIO builds from `fonts/思源黑体-Bold.otf` and the current i18n translation characters.
 
 ### Font Configuration
 
@@ -182,7 +185,7 @@ Examples:
 - **Reading Font**: Used for book content text.
 - **UI Font**: Used for menus, titles, and interface elements.
 
-> Due to memory constraints, the built-in font uses a very small Chinese character set, containing only the characters required for the UI.
+> Due to memory constraints, the built-in font uses a compact UI character set generated from the current translations.
 > It is recommended to store more complete UI and reading fonts on the SD card for a better experience.
 > If generating fonts is inconvenient, you can download the example fonts provided above.
 

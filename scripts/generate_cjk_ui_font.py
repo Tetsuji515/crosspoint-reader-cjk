@@ -11,14 +11,11 @@ import argparse
 import sys
 from pathlib import Path
 
-try:
-    from PIL import Image, ImageDraw, ImageFont
-except ImportError:
-    print("Error: PIL/Pillow not installed. Run: pip3 install Pillow")
-    sys.exit(1)
+from gen_i18n import parse_yaml_file
 
-# UI characters needed (extracted from I18n strings + common punctuation)
-UI_CHARS = """
+# Baseline characters that are not guaranteed to appear in translations, but are
+# used by UI layout, dynamic labels, punctuation, or Japanese composition.
+BASE_UI_CHARS = """
 !%&()*+,-./0123456789:;<=>?@，。！、：；？""''「」『』【】〈〉《》〔〕…—―─·•
 ABCDEFGHIJKLMNOPQRSTUVWXYZ[]{}_
 abcdefghijklmnopqrstuvwxyz|«»
@@ -39,12 +36,69 @@ abcdefghijklmnopqrstuvwxyz|«»
 def get_unique_chars(text):
     chars = set()
     for c in text:
-        if c.strip() and ord(c) >= 0x20:
+        if c.strip() and 0x20 <= ord(c) <= 0xFFFF:
             chars.add(c)
     return sorted(chars, key=ord)
 
+
+def normalize_language_filter(language_filter):
+    if not language_filter:
+        return None
+
+    normalized = {language.upper() for language in language_filter}
+    if "ENGLISH" in normalized:
+        normalized.add("EN")
+    normalized.add("EN")
+    return normalized
+
+
+def collect_translation_chars(translations_dir, language_filter=None):
+    """Return every unique character used by selected translation YAML files."""
+    translations_path = Path(translations_dir)
+    if not translations_path.is_dir():
+        raise FileNotFoundError(f"Translations directory not found: {translations_dir}")
+
+    normalized_filter = normalize_language_filter(language_filter)
+    chars = set()
+    for yaml_file in sorted(translations_path.glob("*.yaml")):
+        data = parse_yaml_file(str(yaml_file))
+        language_code = data.get("_language_code", "").upper()
+        if normalized_filter and language_code not in normalized_filter:
+            continue
+
+        for key, value in data.items():
+            if key.startswith("_"):
+                continue
+            for char in value:
+                if char.strip() and 0x20 <= ord(char) <= 0xFFFF:
+                    chars.add(char)
+    return "".join(sorted(chars, key=ord))
+
+
+def build_ui_chars(translations_dir=None, language_filter=None):
+    """Build the generated font character source from translations plus baseline UI glyphs."""
+    chars = BASE_UI_CHARS
+    if translations_dir:
+        chars += collect_translation_chars(translations_dir, language_filter)
+    return chars
+
+
+def write_wrapped_values(file_obj, values, formatter, values_per_line=16):
+    for start in range(0, len(values), values_per_line):
+        chunk = values[start:start + values_per_line]
+        file_obj.write("    ")
+        file_obj.write(" ".join(formatter(value) for value in chunk))
+        file_obj.write("\n")
+
+
 def load_font_fitting_cell(font_path, pixel_size):
     """Load a font and shrink it until ascent+descent fits the cell height."""
+    try:
+        from PIL import ImageFont
+    except ImportError:
+        print("Error: PIL/Pillow not installed. Run: pip3 install Pillow")
+        sys.exit(1)
+
     pt_size = max(1, int(pixel_size))
     while pt_size > 0:
         try:
@@ -58,14 +112,20 @@ def load_font_fitting_cell(font_path, pixel_size):
         pt_size -= 1
     return None, None, None, None
 
-def generate_font_header(font_path, pixel_size, output_path):
+
+def generate_font_header(font_path, pixel_size, output_path, chars_text=None):
     """Generate CJK UI font header file."""
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        print("Error: PIL/Pillow not installed. Run: pip3 install Pillow")
+        sys.exit(1)
 
     font, pt_size, ascent, descent = load_font_fitting_cell(font_path, pixel_size)
     if font is None:
         return False
 
-    chars = get_unique_chars(UI_CHARS)
+    chars = get_unique_chars(chars_text if chars_text is not None else BASE_UI_CHARS)
     print(f"Generating {pixel_size}x{pixel_size} font with {len(chars)} characters...")
 
     # Collect glyph data
@@ -169,40 +229,21 @@ static constexpr uint16_t CJK_UI_FONT_GLYPH_COUNT = {len(chars)};
 static const uint16_t CJK_UI_CODEPOINTS[] PROGMEM = {{
 ''')
 
-        # Write codepoints
-        for i, cp in enumerate(codepoints):
-            if i % 16 == 0:
-                f.write('    ')
-            f.write(f'0x{cp:04X}, ')
-            if (i + 1) % 16 == 0:
-                f.write('\n')
-        if len(codepoints) % 16 != 0:
-            f.write('\n')
+        write_wrapped_values(f, codepoints, lambda cp: f'0x{cp:04X},')
         f.write('};\n\n')
 
         # Write widths
         f.write('// Glyph width table (actual advance width for proportional spacing)\n')
         f.write('static const uint8_t CJK_UI_GLYPH_WIDTHS[] PROGMEM = {\n')
-        for i, w in enumerate(widths):
-            if i % 16 == 0:
-                f.write('    ')
-            f.write(f'{w:3}, ')
-            if (i + 1) % 16 == 0:
-                f.write('\n')
-        if len(widths) % 16 != 0:
-            f.write('\n')
+        write_wrapped_values(f, widths, lambda width: f'{width:3},')
         f.write('};\n\n')
 
         # Write bitmap data
         f.write('// Glyph bitmap data\n')
         f.write('static const uint8_t CJK_UI_GLYPHS[] PROGMEM = {\n')
         for i, bitmap in enumerate(bitmaps):
-            f.write(f'    // U+{codepoints[i]:04X} ({chr(codepoints[i])})\n    ')
-            for j, b in enumerate(bitmap):
-                f.write(f'0x{b:02X}, ')
-                if (j + 1) % 16 == 0 and j < len(bitmap) - 1:
-                    f.write('\n    ')
-            f.write('\n')
+            f.write(f'    // U+{codepoints[i]:04X} ({chr(codepoints[i])})\n')
+            write_wrapped_values(f, bitmap, lambda byte: f'0x{byte:02X},')
         f.write('};\n\n')
 
         # Write lookup functions
@@ -246,11 +287,22 @@ inline uint8_t getCjkUiGlyphWidth(uint32_t codepoint) {
     print(f"  - {len(chars) * bytes_per_char} bytes bitmap data")
     return True
 
+
 def main():
     parser = argparse.ArgumentParser(description='Generate CJK UI font header')
     parser.add_argument('--size', type=int, default=26, help='Pixel size (default: 26)')
     parser.add_argument('--font', type=str, required=True, help='Path to Source Han Sans font file')
     parser.add_argument('--output', type=str, help='Output path (default: lib/GfxRenderer/cjk_ui_font_SIZE.h)')
+    parser.add_argument(
+        '--translations-dir',
+        type=str,
+        help='Translation YAML directory to include in the generated UI character set',
+    )
+    parser.add_argument(
+        '--languages',
+        type=str,
+        help='Comma-separated _language_code filter for translation characters',
+    )
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
@@ -265,7 +317,17 @@ def main():
         print(f"Error: Font file not found: {args.font}")
         sys.exit(1)
 
-    if generate_font_header(args.font, args.size, output_path):
+    language_filter = None
+    if args.languages:
+        language_filter = [lang.strip() for lang in args.languages.split(',') if lang.strip()]
+
+    translations_dir = None
+    if args.translations_dir:
+        translations_dir = Path(args.translations_dir)
+
+    chars_text = build_ui_chars(translations_dir, language_filter)
+
+    if generate_font_header(args.font, args.size, output_path, chars_text):
         print("Success!")
     else:
         print("Failed!")
