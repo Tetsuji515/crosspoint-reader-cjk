@@ -728,9 +728,6 @@ bool EpubReaderActivity::loadOrBuildSection(const int orientedMarginTop, const i
                                 SETTINGS.firstLineIndent, SETTINGS.embeddedStyle, 0)) {
     LOG_DBG("ERS", "Cache not found, building...");
 
-    FontManager::ScopedGlyphCacheSuspension glyphCacheSuspension(FontManager::getInstance());
-    LOG_DBG("ERS", "Suspended external glyph caches before section build, free heap: %u", ESP.getFreeHeap());
-
     if (ReaderRuntime::classifyReaderMemory(ESP.getFreeHeap()) == ReaderRuntime::MemoryDecision::Stop) {
       LOG_ERR("ERS", "Insufficient heap before section build: %u", ESP.getFreeHeap());
       section.reset();

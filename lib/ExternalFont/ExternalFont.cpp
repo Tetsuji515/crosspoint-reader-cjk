@@ -1,7 +1,6 @@
 #include "ExternalFont.h"
 
 #include <HalStorage.h>
-#include <FontManager.h>
 #include <Logging.h>
 
 #include <algorithm>
@@ -133,16 +132,6 @@ LegacyFallbacks getGlyphFallbacks(const uint32_t codepoint) {
 
 ExternalFont::~ExternalFont() { unload(); }
 
-void ExternalFont::releaseGlyphCache() {
-  delete[] _cache;
-  _cache = nullptr;
-  delete[] _hashTable;
-  _hashTable = nullptr;
-  _accessCounter = 0;
-  _lastReadOffset = 0;
-  _hasLastReadOffset = false;
-}
-
 void ExternalFont::unload() {
   if (_fontFile) {
     _fontFile.close();
@@ -160,10 +149,16 @@ void ExternalFont::unload() {
   _glyphCount = 0;
   _glyphsOffset = 0;
   _bitmapOffset = 0;
+  _accessCounter = 0;
+  _lastReadOffset = 0;
+  _hasLastReadOffset = false;
 
   delete[] _intervals;
   _intervals = nullptr;
-  releaseGlyphCache();
+  delete[] _cache;
+  _cache = nullptr;
+  delete[] _hashTable;
+  _hashTable = nullptr;
 }
 
 bool ExternalFont::parseFilename(const char* filepath) {
@@ -375,31 +370,6 @@ bool ExternalFont::readEpdGlyphBitmap(uint32_t dataOffset, uint32_t dataLength, 
   return true;
 }
 
-bool ExternalFont::ensureGlyphCache() {
-  if (_cache && _hashTable) {
-    return true;
-  }
-
-  releaseGlyphCache();
-
-  _cache = new (std::nothrow) CacheEntry[CACHE_SIZE];
-  _hashTable = new (std::nothrow) int16_t[CACHE_SIZE];
-  if (!_cache || !_hashTable) {
-    LOG_ERR("EFT", "Failed to allocate glyph cache (%d bytes)",
-            static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t))));
-    releaseGlyphCache();
-    return false;
-  }
-
-  std::memset(_hashTable, -1, CACHE_SIZE * sizeof(int16_t));
-  _accessCounter = 0;
-  _lastReadOffset = 0;
-  _hasLastReadOffset = false;
-  LOG_DBG("EFT", "Glyph cache allocated: %dKB",
-          static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t)) / 1024));
-  return true;
-}
-
 bool ExternalFont::load(const char* filepath) {
   unload();
 
@@ -432,10 +402,27 @@ bool ExternalFont::load(const char* filepath) {
     _isRichMetricsFormat = false;
   }
 
+  _cache = new (std::nothrow) CacheEntry[CACHE_SIZE];
+  _hashTable = new (std::nothrow) int16_t[CACHE_SIZE];
+  if (!_cache || !_hashTable) {
+    LOG_ERR("EFT", "Failed to allocate glyph cache (%d bytes)",
+            static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t))));
+    delete[] _cache;
+    _cache = nullptr;
+    delete[] _hashTable;
+    _hashTable = nullptr;
+    delete[] _intervals;
+    _intervals = nullptr;
+    _fontFile.close();
+    return false;
+  }
+  std::memset(_hashTable, -1, CACHE_SIZE * sizeof(int16_t));
+
   _isLoaded = true;
   _lastReadOffset = 0;
   _hasLastReadOffset = false;
-  LOG_DBG("EFT", "Loaded: %s (metadata only, glyph cache lazy, %s format)", filepath,
+  LOG_DBG("EFT", "Loaded: %s (cache %dKB allocated, %s format)", filepath,
+          static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t)) / 1024),
           _isRichMetricsFormat ? "EPDFont" : "legacy .bin");
   return true;
 }
@@ -507,12 +494,6 @@ bool ExternalFont::readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer) {
 
 const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
   if (!_isLoaded) {
-    return nullptr;
-  }
-  if (FontManager::getInstance().areGlyphCachesSuspended()) {
-    return nullptr;
-  }
-  if (!ensureGlyphCache()) {
     return nullptr;
   }
 
@@ -770,12 +751,6 @@ bool ExternalFont::getGlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out
 
 void ExternalFont::preloadGlyphs(const uint32_t* codepoints, size_t count) {
   if (!_isLoaded || !codepoints || count == 0) {
-    return;
-  }
-  if (FontManager::getInstance().areGlyphCachesSuspended()) {
-    return;
-  }
-  if (!ensureGlyphCache()) {
     return;
   }
 

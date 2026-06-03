@@ -100,27 +100,6 @@ class FontManager {
   ExternalFont* getActiveUiFont();
 
   /**
-   * Release bitmap glyph caches for active reader/UI fonts while preserving
-   * selected font metadata. Rendering lazily reallocates caches as needed.
-   */
-  void releaseGlyphCaches();
-
-  void setGlyphCachesSuspended(bool suspended);
-  bool areGlyphCachesSuspended() const { return _glyphCachesSuspended; }
-
-  class ScopedGlyphCacheSuspension {
-   public:
-    explicit ScopedGlyphCacheSuspension(FontManager& manager);
-    ~ScopedGlyphCacheSuspension();
-    ScopedGlyphCacheSuspension(const ScopedGlyphCacheSuspension&) = delete;
-    ScopedGlyphCacheSuspension& operator=(const ScopedGlyphCacheSuspension&) = delete;
-
-   private:
-    FontManager& _manager;
-    bool _previous;
-  };
-
-  /**
    * Check if external reader font is enabled
    */
   bool isExternalFontEnabled() const { return _selectedIndex >= 0 && _activeFont.isLoaded(); }
@@ -172,7 +151,6 @@ class FontManager {
 
   ExternalFont _activeFont;    // Reader font
   ExternalFont _activeUiFont;  // UI font
-  bool _glyphCachesSuspended = false;
 
   bool isUiSharingReaderFont() const { return _selectedUiIndex >= 0 && _selectedUiIndex == _selectedIndex; }
 
