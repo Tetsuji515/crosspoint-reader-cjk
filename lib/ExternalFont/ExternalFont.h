@@ -103,6 +103,10 @@ class ExternalFont {
   uint16_t getLineHeight() const { return _fontMetrics.lineHeight; }
   void unload();
 
+  // Release bitmap glyph cache while keeping font metadata/file state loaded.
+  // Layout measurement uses getGlyphMetricsForLayout() and can run without this cache.
+  void releaseGlyphCache();
+
   /**
    * Check if a font with given dimensions can fit in the glyph cache.
    * Fonts with bytesPerChar > MAX_GLYPH_BYTES cannot be loaded.
@@ -112,15 +116,21 @@ class ExternalFont {
   }
 
   /**
-   * Get cached metrics for a glyph.
-   * Must call getGlyph() first to ensure it's loaded!
+   * Get glyph metrics using cached data when available, otherwise the layout
+   * metrics path. Does not require callers to load the bitmap glyph first.
    * @param cp Unicode codepoint
    * @param outMinX Minimum X offset (left bearing)
    * @param outAdvanceX Advance width for cursor positioning
-   * @return true if metrics found in cache, false otherwise
+   * @return true if metrics are available, false otherwise
    */
   bool getGlyphMetrics(uint32_t cp, uint8_t* outMinX, uint8_t* outAdvanceX);
   bool getGlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out) const;
+
+  /**
+   * Measure a glyph for layout without requiring the full bitmap glyph cache.
+   * Mirrors getGlyph() fallback semantics so section builds keep identical line breaks.
+   */
+  bool getGlyphMetricsForLayout(uint32_t codepoint, ExternalGlyphMetrics* out) const;
 
  private:
   // Font file handle (keep open to avoid repeated open/close)
@@ -144,9 +154,9 @@ class ExternalFont {
   uint32_t _glyphsOffset = 0;  // file offset of the glyph metrics table
   uint32_t _bitmapOffset = 0;  // file offset of the bitmap blob
 
-  // LRU cache - dynamically allocated on load(), freed on unload()
-  // 160 glyphs for CJK text rendering (~44KB per font when loaded).
-  // Memory is only allocated when an external font is actually used.
+  // LRU cache - lazily allocated for bitmap rendering/preload, freed on unload()
+  // or before memory-heavy section builds. 160 glyphs for CJK text rendering
+  // (~44KB per font when loaded).
   static constexpr int CACHE_SIZE = ExternalFontCachePolicy::kGlyphCacheSize;
   static constexpr int PRELOAD_LIMIT = ExternalFontCachePolicy::kPreloadLimit;
   static constexpr int MAX_GLYPH_BYTES = 260;  // Max 260 bytes per glyph (e.g. up to 38x52)
@@ -158,8 +168,12 @@ class ExternalFont {
     bool notFound = false;              // True if glyph doesn't exist in font
     ExternalGlyphMetrics metrics = {};  // Cached rendering metrics
   };
-  CacheEntry* _cache = nullptr;  // Dynamically allocated on load()
+  CacheEntry* _cache = nullptr;  // Lazily allocated when bitmap rendering/preload needs it
   uint32_t _accessCounter = 0;
+
+  // Scratch bitmap for legacy .bin layout metrics. This avoids a 260-byte stack
+  // object and repeated heap allocation while keeping full glyph cache suspended.
+  mutable uint8_t _metricsScratch[MAX_GLYPH_BYTES] = {};
 
   // Sequential read fast path - stores the absolute file offset expected for
   // the next read, so adjacent glyph records/bitmaps can skip seek().
@@ -210,7 +224,11 @@ class ExternalFont {
   /**
    * Read legacy ".bin" glyph bitmap (fixed-grid direct codepoint indexing).
    */
-  bool readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer);
+  bool readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer) const;
+
+  bool ensureGlyphCache();
+  bool measureRichGlyphForLayout(uint32_t codepoint, ExternalGlyphMetrics* out) const;
+  bool measureLegacyGlyphForLayout(uint32_t codepoint, ExternalGlyphMetrics* out) const;
 
   /**
    * Parse filename to get font parameters

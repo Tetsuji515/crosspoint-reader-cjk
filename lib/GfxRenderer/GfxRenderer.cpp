@@ -487,10 +487,12 @@ int GfxRenderer::getTextWidthExternalReader(const int effectiveFontId, const cha
       width += cjkAdvance;
       continue;
     }
-    const uint8_t* bitmap = extFont->getGlyph(cp);
-    if (bitmap) {
+    ExternalGlyphMetrics metrics{};
+    if (extFont->getGlyphMetricsForLayout(cp, &metrics)) {
       const int spacing = getAsciiSpacing(cp);
-      width += getExternalGlyphAdvanceForRendering(*extFont, cp, spacing);
+      width +=
+          getExternalGlyphAdvanceForRendering(metrics, extFont->getCharWidth(), spacing,
+                                              shouldUseCjkSymbolCellMetrics(cp), shouldUseGlyphBoundsForAdvance(cp));
     } else {
       // Fall back to built-in reader font width
       const EpdGlyph* glyph = fontFamily.getGlyph(cp, style);
@@ -1623,8 +1625,11 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
     FontManager& fm = FontManager::getInstance();
     if (fm.isExternalFontEnabled()) {
       ExternalFont* extFont = fm.getActiveFont();
-      if (extFont && extFont->getGlyph(' ')) {
-        return getExternalGlyphAdvanceForRendering(*extFont, ' ', 0);
+      ExternalGlyphMetrics metrics{};
+      if (extFont && extFont->getGlyphMetricsForLayout(' ', &metrics)) {
+        return getExternalGlyphAdvanceForRendering(metrics, extFont->getCharWidth(), 0,
+                                                   shouldUseCjkSymbolCellMetrics(' '),
+                                                   shouldUseGlyphBoundsForAdvance(' '));
       }
     }
   }
@@ -1674,11 +1679,13 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
             width += cjkAdvance;
             continue;
           }
-          // Non-CJK: try external font glyph metrics
-          const uint8_t* bitmap = extFont->getGlyph(cp);
-          if (bitmap) {
+          // Non-CJK: try external font glyph metrics without requiring bitmap cache
+          ExternalGlyphMetrics metrics{};
+          if (extFont->getGlyphMetricsForLayout(cp, &metrics)) {
             const int spacing = getAsciiSpacing(cp);
-            width += getExternalGlyphAdvanceForRendering(*extFont, cp, spacing);
+            width += getExternalGlyphAdvanceForRendering(metrics, extFont->getCharWidth(), spacing,
+                                                         shouldUseCjkSymbolCellMetrics(cp),
+                                                         shouldUseGlyphBoundsForAdvance(cp));
           } else if (fallbackIt != fontMap.end()) {
             // Fall back to built-in reader font for missing glyphs
             const EpdGlyph* glyph = fallbackIt->second.getGlyph(cp, style);

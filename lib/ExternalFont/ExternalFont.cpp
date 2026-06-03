@@ -1,5 +1,6 @@
 #include "ExternalFont.h"
 
+#include <FontManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
 
@@ -152,6 +153,7 @@ void ExternalFont::unload() {
   _accessCounter = 0;
   _lastReadOffset = 0;
   _hasLastReadOffset = false;
+  std::memset(_metricsScratch, 0, sizeof(_metricsScratch));
 
   delete[] _intervals;
   _intervals = nullptr;
@@ -402,32 +404,54 @@ bool ExternalFont::load(const char* filepath) {
     _isRichMetricsFormat = false;
   }
 
+  _isLoaded = true;
+  _lastReadOffset = 0;
+  _hasLastReadOffset = false;
+  LOG_DBG("EFT", "Loaded: %s (glyph cache lazy, %s format)", filepath,
+          _isRichMetricsFormat ? "EPDFont" : "legacy .bin");
+  return true;
+}
+
+void ExternalFont::releaseGlyphCache() {
+  delete[] _cache;
+  _cache = nullptr;
+  delete[] _hashTable;
+  _hashTable = nullptr;
+  _accessCounter = 0;
+  _lastReadOffset = 0;
+  _hasLastReadOffset = false;
+}
+
+bool ExternalFont::ensureGlyphCache() {
+  if (_cache && _hashTable) {
+    return true;
+  }
+
+  releaseGlyphCache();
+
   _cache = new (std::nothrow) CacheEntry[CACHE_SIZE];
   _hashTable = new (std::nothrow) int16_t[CACHE_SIZE];
   if (!_cache || !_hashTable) {
     LOG_ERR("EFT", "Failed to allocate glyph cache (%d bytes)",
             static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t))));
-    delete[] _cache;
-    _cache = nullptr;
-    delete[] _hashTable;
-    _hashTable = nullptr;
-    delete[] _intervals;
-    _intervals = nullptr;
-    _fontFile.close();
+    releaseGlyphCache();
     return false;
   }
-  std::memset(_hashTable, -1, CACHE_SIZE * sizeof(int16_t));
 
-  _isLoaded = true;
+  std::memset(_hashTable, -1, CACHE_SIZE * sizeof(int16_t));
+  _accessCounter = 0;
   _lastReadOffset = 0;
   _hasLastReadOffset = false;
-  LOG_DBG("EFT", "Loaded: %s (cache %dKB allocated, %s format)", filepath,
-          static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t)) / 1024),
-          _isRichMetricsFormat ? "EPDFont" : "legacy .bin");
+  LOG_DBG("EFT", "Glyph cache allocated: %dKB",
+          static_cast<int>(CACHE_SIZE * (sizeof(CacheEntry) + sizeof(int16_t)) / 1024));
   return true;
 }
 
 int ExternalFont::findInCache(uint32_t codepoint) const {
+  if (!_cache || !_hashTable) {
+    return -1;
+  }
+
   // O(1) hash table lookup with linear probing for collisions
   int hash = hashCodepoint(codepoint);
   for (int i = 0; i < CACHE_SIZE; i++) {
@@ -459,7 +483,7 @@ int ExternalFont::getLruSlot() {
   return lruIndex;
 }
 
-bool ExternalFont::readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer) {
+bool ExternalFont::readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer) const {
   if (!_fontFile) {
     return false;
   }
@@ -494,6 +518,12 @@ bool ExternalFont::readLegacyGlyphFromSD(uint32_t codepoint, uint8_t* buffer) {
 
 const uint8_t* ExternalFont::getGlyph(uint32_t codepoint) {
   if (!_isLoaded) {
+    return nullptr;
+  }
+  if (FontManager::getInstance().isGlyphCacheSuspendedFor(this)) {
+    return nullptr;
+  }
+  if (!ensureGlyphCache()) {
     return nullptr;
   }
 
@@ -738,12 +768,154 @@ bool ExternalFont::getGlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out
     }
   }
 
+  return getGlyphMetricsForLayout(codepoint, out);
+}
+
+bool ExternalFont::getGlyphMetricsForLayout(uint32_t codepoint, ExternalGlyphMetrics* out) const {
+  if (!out || !_isLoaded) return false;
+
+  if (_cache) {
+    const int idx = findInCache(codepoint);
+    if (idx >= 0 && !_cache[idx].notFound) {
+      *out = _cache[idx].metrics;
+      return true;
+    }
+  }
+
   if (_isRichMetricsFormat) {
-    const int intervalIdx = findEpdInterval(codepoint);
+    return measureRichGlyphForLayout(codepoint, out);
+  }
+  return measureLegacyGlyphForLayout(codepoint, out);
+}
+
+bool ExternalFont::measureRichGlyphForLayout(uint32_t codepoint, ExternalGlyphMetrics* out) const {
+  auto readMetrics = [&](uint32_t cp, ExternalGlyphMetrics* metrics, bool* hasBitmapData) -> bool {
+    const int intervalIdx = findEpdInterval(cp);
     if (intervalIdx < 0) return false;
     const EpdInterval& iv = _intervals[intervalIdx];
-    const uint32_t glyphIndex = iv.glyphOffset + (codepoint - iv.start);
-    return readEpdGlyphEntry(glyphIndex, out, nullptr, nullptr);
+    const uint32_t glyphIndex = iv.glyphOffset + (cp - iv.start);
+    uint32_t dataLength = 0;
+    uint32_t dataOffset = 0;
+    if (!readEpdGlyphEntry(glyphIndex, metrics, &dataLength, &dataOffset)) {
+      return false;
+    }
+    if (hasBitmapData) {
+      *hasBitmapData = dataLength > 0;
+    }
+    if (metrics->advanceX == 0 && isAdvanceOnlyWhitespace(cp)) {
+      metrics->advanceX = _charWidth / 3;
+    }
+    return true;
+  };
+
+  auto usableMetrics = [](const ExternalGlyphMetrics& metrics, const bool hasBitmapData, const uint32_t cp) {
+    return hasBitmapData || isAdvanceOnlyWhitespace(cp) ||
+           (metrics.width == 0 && metrics.height == 0 && metrics.advanceX > 0);
+  };
+
+  ExternalGlyphMetrics metrics{};
+  bool hasBitmapData = false;
+  if (readMetrics(codepoint, &metrics, &hasBitmapData) && usableMetrics(metrics, hasBitmapData, codepoint)) {
+    *out = metrics;
+    return true;
+  }
+
+  if (codepoint >= 0xFF01 && codepoint <= 0xFF5E) {
+    const uint32_t halfwidth = codepoint - 0xFEE0;
+    if (readMetrics(halfwidth, &metrics, &hasBitmapData) && usableMetrics(metrics, hasBitmapData, halfwidth)) {
+      *out = metrics;
+      return true;
+    }
+  }
+
+  const LegacyFallbacks fallbacks = getGlyphFallbacks(codepoint);
+  for (uint8_t i = 0; i < fallbacks.count; ++i) {
+    const uint32_t fallback = fallbacks.codepoints[i];
+    if (readMetrics(fallback, &metrics, &hasBitmapData) && usableMetrics(metrics, hasBitmapData, fallback)) {
+      *out = metrics;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool ExternalFont::measureLegacyGlyphForLayout(uint32_t codepoint, ExternalGlyphMetrics* out) const {
+  auto scanLegacy = [&](uint32_t cp, ExternalGlyphMetrics* metrics) -> bool {
+    if (!readLegacyGlyphFromSD(cp, _metricsScratch)) {
+      return false;
+    }
+
+    bool isEmpty = true;
+    uint8_t minX = _charWidth;
+    uint8_t maxX = 0;
+    const uint8_t bytesPerRow = _bytesPerRow;
+    for (int y = 0; y < _charHeight; y++) {
+      for (int x = 0; x < _charWidth; x++) {
+        const int byteIndex = y * bytesPerRow + (x >> 3);
+        const int bitIndex = 7 - (x & 7);
+        if ((_metricsScratch[byteIndex] >> bitIndex) & 1) {
+          isEmpty = false;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+        }
+      }
+    }
+
+    const bool isWhitespace = isAdvanceOnlyWhitespace(cp);
+    if (isEmpty && !isWhitespace && cp > 0x7F) {
+      return false;
+    }
+
+    *metrics = {};
+    metrics->width = _charWidth;
+    metrics->height = _charHeight;
+    metrics->left = isEmpty ? 0 : minX;
+    metrics->top = _charHeight;
+    if (!isEmpty) {
+      const bool isFullwidth = (cp >= 0x2E80 && cp <= 0x9FFF) || (cp >= 0x3000 && cp <= 0x30FF) ||
+                               (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFF00 && cp <= 0xFF60);
+      if (isFullwidth) {
+        metrics->advanceX = _charWidth;
+      } else {
+        const uint8_t contentAdvance = (maxX - minX + 1) + 2;
+        metrics->advanceX = (contentAdvance > _charWidth) ? _charWidth : contentAdvance;
+      }
+      metrics->flags = 0x01;
+    } else if (isWhitespace) {
+      if (cp == 0x2003 || cp == 0x3000) {
+        metrics->advanceX = _charWidth;
+      } else if (cp == 0x2002) {
+        metrics->advanceX = _charWidth / 2;
+      } else {
+        metrics->advanceX = _charWidth / 3;
+      }
+    } else {
+      metrics->advanceX = _charWidth / 3;
+    }
+    return true;
+  };
+
+  ExternalGlyphMetrics metrics{};
+  if (scanLegacy(codepoint, &metrics)) {
+    *out = metrics;
+    return true;
+  }
+
+  if (codepoint >= 0xFF01 && codepoint <= 0xFF5E) {
+    const uint32_t halfwidth = codepoint - 0xFEE0;
+    if (scanLegacy(halfwidth, &metrics)) {
+      *out = metrics;
+      return true;
+    }
+  }
+
+  const LegacyFallbacks fallbacks = getGlyphFallbacks(codepoint);
+  for (uint8_t i = 0; i < fallbacks.count; ++i) {
+    if (scanLegacy(fallbacks.codepoints[i], &metrics)) {
+      *out = metrics;
+      return true;
+    }
   }
 
   return false;
@@ -751,6 +923,12 @@ bool ExternalFont::getGlyphMetrics(uint32_t codepoint, ExternalGlyphMetrics* out
 
 void ExternalFont::preloadGlyphs(const uint32_t* codepoints, size_t count) {
   if (!_isLoaded || !codepoints || count == 0) {
+    return;
+  }
+  if (FontManager::getInstance().areGlyphCachesSuspended()) {
+    return;
+  }
+  if (!ensureGlyphCache()) {
     return;
   }
 

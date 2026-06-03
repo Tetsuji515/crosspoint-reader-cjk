@@ -207,6 +207,37 @@ ExternalFont* FontManager::getActiveUiFont() {
   return nullptr;
 }
 
+void FontManager::releaseGlyphCaches() {
+  _activeFont.releaseGlyphCache();
+  if (!isUiSharingReaderFont()) {
+    _activeUiFont.releaseGlyphCache();
+  }
+}
+
+void FontManager::setGlyphCachesSuspended(bool suspended) {
+  _glyphCachesSuspended = suspended;
+  if (suspended) {
+    _activeFont.releaseGlyphCache();
+  }
+}
+
+bool FontManager::isGlyphCacheSuspendedFor(const ExternalFont* font) const {
+  if (!_glyphCachesSuspended || !font) {
+    return false;
+  }
+  if (isUiSharingReaderFont()) {
+    return false;
+  }
+  return font == &_activeFont;
+}
+
+FontManager::ScopedGlyphCacheSuspension::ScopedGlyphCacheSuspension(FontManager& manager)
+    : _manager(manager), _previous(manager.areGlyphCachesSuspended()) {
+  _manager.setGlyphCachesSuspended(true);
+}
+
+FontManager::ScopedGlyphCacheSuspension::~ScopedGlyphCacheSuspension() { _manager.setGlyphCachesSuspended(_previous); }
+
 void FontManager::writeFontChoice(HalFile& file, const int index) const {
   serialization::writePod(file, index);
   if (index >= 0 && index < _fontCount) {
