@@ -103,6 +103,11 @@ class ExternalFont {
   uint16_t getLineHeight() const { return _fontMetrics.lineHeight; }
   void unload();
 
+  // Release bitmap glyph cache while keeping font metadata/file state loaded.
+  // Used before memory-heavy section builds; getGlyph()/preloadGlyphs() will
+  // lazily reallocate the cache when rendering needs it again.
+  void releaseGlyphCache();
+
   /**
    * Check if a font with given dimensions can fit in the glyph cache.
    * Fonts with bytesPerChar > MAX_GLYPH_BYTES cannot be loaded.
@@ -144,9 +149,9 @@ class ExternalFont {
   uint32_t _glyphsOffset = 0;  // file offset of the glyph metrics table
   uint32_t _bitmapOffset = 0;  // file offset of the bitmap blob
 
-  // LRU cache - dynamically allocated on load(), freed on unload()
-  // 160 glyphs for CJK text rendering (~44KB per font when loaded).
-  // Memory is only allocated when an external font is actually used.
+  // LRU cache - dynamically allocated on first glyph use, freed on unload()
+  // or releaseGlyphCache(). 160 glyphs for CJK text rendering (~44KB per font
+  // when loaded). Memory is only allocated when rendering needs glyph bitmaps.
   static constexpr int CACHE_SIZE = ExternalFontCachePolicy::kGlyphCacheSize;
   static constexpr int PRELOAD_LIMIT = ExternalFontCachePolicy::kPreloadLimit;
   static constexpr int MAX_GLYPH_BYTES = 260;  // Max 260 bytes per glyph (e.g. up to 38x52)
@@ -158,7 +163,7 @@ class ExternalFont {
     bool notFound = false;              // True if glyph doesn't exist in font
     ExternalGlyphMetrics metrics = {};  // Cached rendering metrics
   };
-  CacheEntry* _cache = nullptr;  // Dynamically allocated on load()
+  CacheEntry* _cache = nullptr;  // Dynamically allocated on first glyph use
   uint32_t _accessCounter = 0;
 
   // Sequential read fast path - stores the absolute file offset expected for
@@ -168,7 +173,7 @@ class ExternalFont {
 
   // Simple hash table for O(1) cache lookup (codepoint -> cache index, -1 if
   // not cached)
-  int16_t* _hashTable = nullptr;  // Dynamically allocated on load()
+  int16_t* _hashTable = nullptr;  // Dynamically allocated on first glyph use
   static int hashCodepoint(uint32_t cp) { return cp % CACHE_SIZE; }
 
   /**
@@ -217,6 +222,8 @@ class ExternalFont {
    * Format: FontName_size_WxH.{bin,epdf}
    */
   bool parseFilename(const char* filename);
+
+  bool ensureGlyphCache();
 
   /**
    * Find glyph in cache
