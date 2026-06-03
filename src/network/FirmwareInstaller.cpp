@@ -1,13 +1,12 @@
 #include "FirmwareInstaller.h"
 
 #include <Logging.h>
+#include <esp_app_format.h>
+#include <esp_ota_ops.h>
 
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
-
-#include <esp_app_format.h>
-#include <esp_ota_ops.h>
 
 namespace {
 constexpr uint8_t kEsp32C3ChipId = 5;  // CHIP_ID_ESP32C3 in esp_image_format.h
@@ -39,8 +38,8 @@ FirmwareInstaller::Error FirmwareInstaller::validateImageHeader(HalFile& file) {
   return Error::OK;
 }
 
-FirmwareInstaller::Error FirmwareInstaller::installFromFile(HalFile& file, const size_t fileSize,
-                                                            ProgressCallback cb, void* ctx) {
+FirmwareInstaller::Error FirmwareInstaller::installFromFile(HalFile& file, const size_t fileSize, ProgressCallback cb,
+                                                            void* ctx) {
   processedBytes = 0;
   totalBytes = fileSize;
 

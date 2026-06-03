@@ -178,14 +178,12 @@ void SdFirmwareUpdateActivity::loop() {
     }
 
     buttonNavigator.onNextRelease([this] {
-      selectedIndex =
-          ButtonNavigator::nextIndex(selectedIndex, static_cast<int>(candidateCount));
+      selectedIndex = ButtonNavigator::nextIndex(selectedIndex, static_cast<int>(candidateCount));
       requestUpdate();
     });
 
     buttonNavigator.onPreviousRelease([this] {
-      selectedIndex =
-          ButtonNavigator::previousIndex(selectedIndex, static_cast<int>(candidateCount));
+      selectedIndex = ButtonNavigator::previousIndex(selectedIndex, static_cast<int>(candidateCount));
       requestUpdate();
     });
     return;
@@ -241,8 +239,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
   const auto height = renderer.getLineHeight(UI_10_FONT_ID);
 
   renderer.clearScreen();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 tr(STR_INSTALL_FIRMWARE_SD));
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_INSTALL_FIRMWARE_SD));
 
   if (state == SCANNING) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_SD_FIRMWARE_SCANNING));
@@ -251,8 +248,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
   }
 
   if (state == NO_FILE) {
-    const char* message =
-        invalidCandidateCount > 0 ? tr(STR_SD_FIRMWARE_INVALID_FOUND) : tr(STR_SD_FIRMWARE_NOT_FOUND);
+    const char* message = invalidCandidateCount > 0 ? tr(STR_SD_FIRMWARE_INVALID_FOUND) : tr(STR_SD_FIRMWARE_NOT_FOUND);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, message, true);
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -268,11 +264,9 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     GUI.drawList(
         renderer, contentRect, static_cast<int>(candidateCount), selectedIndex,
         [this](int index) { return basenameFromPath(candidates[index].path); }, nullptr, nullptr,
-        [this](int index) { return formatFileSize(candidates[index].size); },
-        true);
+        [this](int index) { return formatFileSize(candidates[index].size); }, true);
 
-    const auto labels =
-        mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer();
     return;
@@ -330,8 +324,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
     y += height + metrics.verticalSpacing;
 
     char bytesText[32];
-    snprintf(bytesText, sizeof(bytesText), "%u / %u", static_cast<unsigned>(processed),
-             static_cast<unsigned>(total));
+    snprintf(bytesText, sizeof(bytesText), "%u / %u", static_cast<unsigned>(processed), static_cast<unsigned>(total));
     renderer.drawCenteredText(UI_10_FONT_ID, y, bytesText);
     y += height + metrics.verticalSpacing;
     renderer.drawCenteredText(UI_10_FONT_ID, y, tr(STR_SD_FIRMWARE_DO_NOT_POWER_OFF), true);
@@ -343,8 +336,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
 
   if (state == FAILED) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_UPDATE_FAILED), true, EpdFontFamily::BOLD);
-    renderer.drawCenteredText(UI_10_FONT_ID, top + height + metrics.verticalSpacing,
-                              errorMessageFor(lastInstallError));
+    renderer.drawCenteredText(UI_10_FONT_ID, top + height + metrics.verticalSpacing, errorMessageFor(lastInstallError));
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer();

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "FirmwareInstaller.h"
-
 #include <cstddef>
+
+#include "FirmwareInstaller.h"
 
 struct SdFirmwareCandidate {
   char path[64];
