@@ -113,6 +113,25 @@ For detailed operation instructions, please refer to the [User Guide](./USER_GUI
 
 > **Tip**: To restore official firmware or the original CrossPoint firmware, use the same page. To switch the boot partition, visit https://xteink-flasher-cjk.vercel.app/debug.
 
+### SD Recovery
+
+If your device is still on v0.3.3 and the normal OTA update path is not working, use the [SD Recovery release](https://github.com/aBER0724/crosspoint-reader-cjk/releases/tag/sd-recovery).
+
+1. Download the recovery `firmware.bin` from the SD Recovery release.
+2. Prepare the target firmware you want to install and rename it to `firmware-xxxx.bin` or `firmware_xxxx.bin`.
+3. Copy both files to the SD card root:
+
+```text
+SD card root/
+├── firmware.bin         # Recovery firmware
+└── firmware-target.bin  # Target firmware; any firmware-* or firmware_*.bin name works
+```
+
+4. On the device, use **Install firmware from SD** to flash `firmware.bin` first.
+5. Reboot after recovery is flashed. Recovery will scan the SD card and install the other firmware file automatically.
+
+Keep only one target firmware file on the SD card, and do not name the target firmware `firmware.bin`. See [SD Recovery Firmware](./docs/recovery-firmware.md) for details and safety notes.
+
 ### Manual Compilation
 
 #### Requirements
