@@ -1,7 +1,5 @@
 #include "Hyphenator.h"
 
-#include <Utf8.h>
-
 #include <algorithm>
 #include <cassert>
 #include <vector>
@@ -22,9 +20,10 @@ struct Iso639Mapping {
   const char* iso639_2;
   const char* iso639_1;
 };
-static constexpr Iso639Mapping kIso639Mappings[] = {{"eng", "en"}, {"fra", "fr"}, {"fre", "fr"}, {"deu", "de"},
-                                                    {"ger", "de"}, {"rus", "ru"}, {"spa", "es"}, {"ita", "it"},
-                                                    {"ukr", "uk"}, {"swe", "sv"}};
+static constexpr Iso639Mapping kIso639Mappings[] = {
+    {"eng", "en"}, {"fra", "fr"}, {"fre", "fr"}, {"deu", "de"}, {"ger", "de"},
+    {"rus", "ru"}, {"spa", "es"}, {"ita", "it"}, {"ukr", "uk"},
+};
 
 // Maps a BCP-47 or ISO 639-2 language tag to a language-specific hyphenator.
 const LanguageHyphenator* hyphenatorForLanguage(const std::string& langTag) {
@@ -257,16 +256,7 @@ std::vector<Hyphenator::BreakInfo> Hyphenator::breakOffsets(const std::string& w
   std::vector<Hyphenator::BreakInfo> breaks;
   breaks.reserve(indexes.size());
   for (const size_t idx : indexes) {
-    // CJK characters can break without inserting a visible hyphen.
-    // Check the codepoint at the break position: if it's a CJK character,
-    // no hyphen is needed since CJK scripts don't use hyphenation.
-    bool needsHyphen = true;
-    if (idx < cps.size() && utf8IsCjkBreakable(cps[idx].value)) {
-      needsHyphen = false;
-    } else if (idx > 0 && utf8IsCjkBreakable(cps[idx - 1].value)) {
-      needsHyphen = false;
-    }
-    breaks.push_back({byteOffsetForIndex(cps, idx), needsHyphen});
+    breaks.push_back({byteOffsetForIndex(cps, idx), true});
   }
 
   return breaks;

@@ -4,6 +4,7 @@
 #include <freertos/task.h>
 
 #include "activities/Activity.h"
+#include "activities/ActivityResult.h"
 #include "util/ButtonNavigator.h"
 
 // Reader status bar configuration activity
@@ -21,8 +22,7 @@ class StatusBarSettingsActivity final : public Activity {
   ButtonNavigator buttonNavigator;
 
   int selectedIndex = 0;
-  // Decided in onEnter() based on halClock.isAvailable() so clock entries are hidden on X4.
-  int visibleItemCount = 0;
 
+  static void taskTrampoline(void* param);
   void handleSelection();
 };

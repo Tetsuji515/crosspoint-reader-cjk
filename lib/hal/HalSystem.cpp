@@ -5,6 +5,7 @@
 #include "Arduino.h"
 #include "HalStorage.h"
 #include "Logging.h"
+#include "ReaderOperationTrace.h"
 #include "esp_debug_helpers.h"
 #include "esp_private/esp_cpu_internal.h"
 #include "esp_private/esp_system_attr.h"
@@ -107,6 +108,7 @@ void clearPanic() {
     panicStack[i].sp = 0;
   }
   clearLastLogs();
+  ReaderRuntime::clearLastReaderOperationTrace();
 }
 
 std::string getPanicInfo(bool full) {
@@ -118,6 +120,7 @@ std::string getPanicInfo(bool full) {
     info += "CrossPoint version: " CROSSPOINT_VERSION;
     info += "\n\nPanic reason: " + std::string(panicMessage);
     info += "\n\nLast logs:\n" + getLastLogs();
+    info += "\n\nLast reader operation:\n" + ReaderRuntime::formatLastReaderOperationTrace();
     info += "\n\nStack memory:\n";
 
     auto toHex = [](uint32_t value) {

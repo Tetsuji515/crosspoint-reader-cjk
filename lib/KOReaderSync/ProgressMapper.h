@@ -1,6 +1,5 @@
 #pragma once
 #include <Epub.h>
-#include <GfxRenderer.h>
 
 #include <memory>
 #include <string>
@@ -14,24 +13,21 @@ struct CrossPointPosition {
   int totalPages;                  // Total pages in the current spine item
   uint16_t paragraphIndex = 0;     // 1-based synthetic paragraph index from XPath p[N]
   bool hasParagraphIndex = false;  // True when paragraphIndex was resolved from XPath
-  uint16_t liIndex = 0;            // Running <li> count at the matched XPath element
-  bool hasLiIndex = false;         // True when target element is <li> and liIndex was resolved
-  char xpathAnchorId[64] = {};     // First <a id> captured inside the matched XPath element
 };
 
 /**
- * Progress position representation.
+ * KOReader position representation.
  */
-struct SavedProgressPosition {
+struct KOReaderPosition {
   std::string xpath;  // XPath-like progress string
   float percentage;   // Progress percentage (0.0 to 1.0)
 };
 
 /**
- * Maps between CrossPoint and SavedProgress position formats, such as those used by KOReader.
+ * Maps between CrossPoint and KOReader position formats.
  *
  * CrossPoint tracks position as (spineIndex, pageNumber).
- * SavedProgress uses XPath-like strings + percentage.
+ * KOReader uses XPath-like strings + percentage.
  *
  * Since CrossPoint discards HTML structure during parsing, we generate
  * synthetic XPath strings based on spine index, using percentage as the
@@ -40,30 +36,28 @@ struct SavedProgressPosition {
 class ProgressMapper {
  public:
   /**
-   * Convert CrossPoint position to SavedProgress format.
+   * Convert CrossPoint position to KOReader format.
    *
    * @param epub The EPUB book
    * @param pos CrossPoint position
-   * @return SavedProgress position
+   * @return KOReader position
    */
-  static SavedProgressPosition toSavedProgress(const std::shared_ptr<Epub>& epub, const CrossPointPosition& pos);
+  static KOReaderPosition toKOReader(const std::shared_ptr<Epub>& epub, const CrossPointPosition& pos);
 
   /**
-   * Convert SavedProgress position to CrossPoint format.
+   * Convert KOReader position to CrossPoint format.
    *
    * Note: The returned pageNumber may be approximate since different
    * rendering settings produce different page counts.
    *
    * @param epub The EPUB book
-   * @param savedPos SavedProgress position
-   * @param renderer GfxRenderer for page count estimation
+   * @param koPos KOReader position
    * @param currentSpineIndex Index of the currently open spine item (for density estimation)
    * @param totalPagesInCurrentSpine Total pages in the current spine item (for density estimation)
    * @return CrossPoint position
    */
-  static CrossPointPosition toCrossPoint(const std::shared_ptr<Epub>& epub, const SavedProgressPosition& savedPos,
-                                         GfxRenderer& renderer, int currentSpineIndex = -1,
-                                         int totalPagesInCurrentSpine = 0, int fallbackTotalPages = 0);
+  static CrossPointPosition toCrossPoint(const std::shared_ptr<Epub>& epub, const KOReaderPosition& koPos,
+                                         int currentSpineIndex = -1, int totalPagesInCurrentSpine = 0);
 
  private:
   /**

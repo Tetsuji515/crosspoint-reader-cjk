@@ -29,7 +29,7 @@ class ContentOpfParser final : public Print {
   XML_Parser parser = nullptr;
   ParserState state = START;
   BookMetadataCache* cache;
-  HalFile tempItemStore;
+  FsFile tempItemStore;
   std::string coverItemId;
 
   // Index for fast idref→href lookup (used only for large EPUBs)

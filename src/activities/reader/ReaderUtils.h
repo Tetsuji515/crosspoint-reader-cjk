@@ -2,17 +2,14 @@
 
 #include <CrossPointSettings.h>
 #include <GfxRenderer.h>
-#include <HalTiltSensor.h>
 #include <Logging.h>
+#include <ReaderRuntimePolicy.h>
 
 #include "MappedInputManager.h"
 
 namespace ReaderUtils {
 
 constexpr unsigned long GO_HOME_MS = 1000;
-constexpr unsigned long SKIP_HOLD_MS = 700;
-constexpr unsigned long BOOKMARK_HOLD_MS = 400;
-constexpr unsigned long BOOKMARK_MESSAGE_DURATION_MS = 2500;
 
 inline void applyOrientation(GfxRenderer& renderer, const uint8_t orientation) {
   switch (orientation) {
@@ -36,38 +33,49 @@ inline void applyOrientation(GfxRenderer& renderer, const uint8_t orientation) {
 struct PageTurnResult {
   bool prev;
   bool next;
-  bool fromTilt;
 };
 
 inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
-  const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
-  const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
-  const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
-  const bool swapFront =
-      SETTINGS.frontButtonFollowOrientation && (SETTINGS.orientation == CrossPointSettings::INVERTED ||
-                                                SETTINGS.orientation == CrossPointSettings::LANDSCAPE_CCW);
-  const auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
-  const auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
-  const bool prev =
-      tiltPrev ||
-      (usePress ? (input.wasPressed(MappedInputManager::Button::PageBack) || input.wasPressed(prevButton))
-                : (input.wasReleased(MappedInputManager::Button::PageBack) || input.wasReleased(prevButton)));
+  const bool usePress = !SETTINGS.longPressChapterSkip;
+  const bool prev = usePress ? (input.wasPressed(MappedInputManager::Button::PageBack) ||
+                                input.wasPressed(MappedInputManager::Button::Left))
+                             : (input.wasReleased(MappedInputManager::Button::PageBack) ||
+                                input.wasReleased(MappedInputManager::Button::Left));
   const bool powerTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                          input.wasReleased(MappedInputManager::Button::Power);
-  const bool next = tiltNext || (usePress ? (input.wasPressed(MappedInputManager::Button::PageForward) || powerTurn ||
-                                             input.wasPressed(nextButton))
-                                          : (input.wasReleased(MappedInputManager::Button::PageForward) || powerTurn ||
-                                             input.wasReleased(nextButton)));
-  return {prev, next, tiltPrev || tiltNext};
+  const bool next = usePress ? (input.wasPressed(MappedInputManager::Button::PageForward) || powerTurn ||
+                                input.wasPressed(MappedInputManager::Button::Right))
+                             : (input.wasReleased(MappedInputManager::Button::PageForward) || powerTurn ||
+                                input.wasReleased(MappedInputManager::Button::Right));
+  return {prev, next};
 }
 
-inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh) {
+inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh, bool darkMode = false) {
   if (pagesUntilFullRefresh <= 1) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
+  } else if (darkMode) {
+    // In dark mode, use DARK_REDRIVE to re-drive all pixels every page turn.
+    // This prevents ghosting accumulation without the visible flash of HALF_REFRESH.
+    renderer.displayBufferDarkRedrive();
+    pagesUntilFullRefresh--;
   } else {
     renderer.displayBuffer();
     pagesUntilFullRefresh--;
+  }
+}
+
+inline void displayWithRefreshDecision(const GfxRenderer& renderer, const ReaderRuntime::RefreshDecision& decision) {
+  switch (decision.mode) {
+    case ReaderRuntime::RefreshMode::Half:
+      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      return;
+    case ReaderRuntime::RefreshMode::DarkRedrive:
+      renderer.displayBufferDarkRedrive();
+      return;
+    case ReaderRuntime::RefreshMode::Fast:
+      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      return;
   }
 }
 

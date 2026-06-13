@@ -23,7 +23,9 @@ class I18n {
   Language getLanguage() const { return _language; }
   void setLanguage(Language lang);
   const char* getLanguageName(Language lang) const;
-  static Language languageFromCode(const char* code);
+
+  void saveSettings();
+  void loadSettings();
 
   // Get all unique characters used in a specific language
   // Returns a sorted string of unique characters

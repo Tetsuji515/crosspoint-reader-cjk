@@ -1,8 +1,8 @@
 """
-PlatformIO pre-build script: inject git branch and short SHA into
-CROSSPOINT_VERSION for the default (dev) environment.
+PlatformIO pre-build script: inject git branch into CROSSPOINT_VERSION for
+the default (dev) environment.
 
-Results in a version string like:  1.1.0-dev-feat-kosync-xpath-05c6cf8
+Results in a version string like:  1.1.0-dev+feat-koysnc-xpath
 Release environments are unaffected; they set CROSSPOINT_VERSION in the ini.
 """
 
@@ -16,51 +16,29 @@ def warn(msg):
     print(f'WARNING [git_branch.py]: {msg}', file=sys.stderr)
 
 
-def run_git_value(project_dir, args, label):
+def get_git_branch(project_dir):
     try:
-        value = subprocess.check_output(
-            ['git', *args],
+        branch = subprocess.check_output(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
             text=True, stderr=subprocess.PIPE, cwd=project_dir
         ).strip()
+        # Detached HEAD — show the short SHA instead
+        if branch == 'HEAD':
+            branch = subprocess.check_output(
+                ['git', 'rev-parse', '--short', 'HEAD'],
+                text=True, stderr=subprocess.PIPE, cwd=project_dir
+            ).strip()
         # Strip characters that would break a C string literal
-        return ''.join(c for c in value if c not in '"\\')
+        return ''.join(c for c in branch if c not in '"\\')
     except FileNotFoundError:
-        warn(f'git not found on PATH; {label} suffix will be "unknown"')
+        warn('git not found on PATH; branch suffix will be "unknown"')
         return 'unknown'
     except subprocess.CalledProcessError as e:
-        warn(
-            f'git command failed (exit {e.returncode}): '
-            f'{e.stderr.strip()}; {label} suffix will be "unknown"'
-        )
+        warn(f'git command failed (exit {e.returncode}): {e.stderr.strip()}; branch suffix will be "unknown"')
         return 'unknown'
-    except OSError as e:
-        warn(
-            f'OS error reading git {label}: {e}; '
-            f'{label} suffix will be "unknown"'
-        )
+    except Exception as e:
+        warn(f'Unexpected error reading git branch: {e}; branch suffix will be "unknown"')
         return 'unknown'
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        warn(
-            f'Unexpected error reading git {label}: {e}; '
-            f'{label} suffix will be "unknown"'
-        )
-        return 'unknown'
-
-
-def get_git_branch(project_dir):
-    branch = run_git_value(
-        project_dir, ['rev-parse', '--abbrev-ref', 'HEAD'], 'branch'
-    )
-    # Detached HEAD has no branch name.
-    if branch == 'HEAD':
-        return 'detached'
-    return branch
-
-
-def get_git_short_sha(project_dir):
-    return run_git_value(
-        project_dir, ['rev-parse', '--short', 'HEAD'], 'short SHA'
-    )
 
 
 def get_base_version(project_dir):
@@ -85,8 +63,7 @@ def inject_version(env):
     project_dir = env['PROJECT_DIR']
     base_version = get_base_version(project_dir)
     branch = get_git_branch(project_dir)
-    short_sha = get_git_short_sha(project_dir)
-    version_string = f'{base_version}-dev-{branch}-{short_sha}'
+    version_string = f'{base_version}-dev+{branch}'
 
     env.Append(CPPDEFINES=[('CROSSPOINT_VERSION', f'\\"{version_string}\\"')])
     print(f'CrossPoint build version: {version_string}')
