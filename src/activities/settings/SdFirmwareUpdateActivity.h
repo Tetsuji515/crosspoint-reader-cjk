@@ -1,59 +1,56 @@
 #pragma once
 
+#include <string>
+
 #include "activities/Activity.h"
-#include "network/SdFirmwareUpdater.h"
-#include "util/ButtonNavigator.h"
 
-class SdFirmwareUpdateActivity final : public Activity {
+/**
+ * SD-card based firmware update activity.
+ *
+ * Flow:
+ *  1) onEnter -> push FileBrowserActivity in PickFirmware mode (only .bin files visible).
+ *  2) On result: validate the .bin (header magic, size fits OTA partition).
+ *  3) Push ConfirmationActivity ("Update firmware?").
+ *  4) On confirm: stream the file into the OTA partition via the Arduino Update API,
+ *     drawing a progress bar; on success ESP.restart().
+ *
+ * Used both from Settings -> System -> "SD Card Firmware Update", and as the only
+ * activity launched in boot recovery mode (left side button + power on X3).
+ */
+class SdFirmwareUpdateActivity : public Activity {
  public:
-  explicit SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("SdFirmwareUpdate", renderer, mappedInput), candidates{} {}
-
-  void onEnter() override;
-  void onExit() override;
-  void loop() override;
-  void render(RenderLock&&) override;
-  bool preventAutoSleep() override {
-    return state == SCANNING || state == INSTALLING || state == FINISHED || state == SHUTTING_DOWN;
-  }
-  bool skipLoopDelay() override { return true; }
-
- private:
-  enum State {
-    SCANNING,
-    NO_FILE,
-    SELECT_FILE,
-    CONFIRM,
-    INSTALLING,
+  enum class State {
+    PICKING,
+    VALIDATING,
+    CONFIRMING,
+    UPDATING,
+    SUCCESS,
     FAILED,
-    FINISHED,
-    SHUTTING_DOWN,
   };
 
-  static constexpr unsigned int UNINITIALIZED_PERCENTAGE = 111;
-  static constexpr size_t kMaxCandidates = 3;
+  explicit SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool recoveryMode = false)
+      : Activity("SdFirmwareUpdate", renderer, mappedInput), recoveryMode(recoveryMode) {}
 
-  State state = SCANNING;
-  bool scanDone = false;
-  unsigned int lastUpdaterPercentage = UNINITIALIZED_PERCENTAGE;
-  int lastProgressHalf = -1;
+  void onEnter() override;
+  void loop() override;
+  void render(RenderLock&&) override;
+  bool preventAutoSleep() override { return state == State::UPDATING || state == State::VALIDATING; }
+  bool skipLoopDelay() override { return state == State::UPDATING; }
 
-  SdFirmwareUpdater updater;
-  SdFirmwareUpdater::Error lastInstallError = SdFirmwareUpdater::Error::OK;
-  SdFirmwareCandidate candidates[kMaxCandidates];
-  size_t candidateCount = 0;
-  size_t invalidCandidateCount = 0;
-  int selectedIndex = 0;
-  char selectedPath[64] = {};
-  size_t selectedSize = 0;
+ private:
+  State state = State::PICKING;
+  bool recoveryMode = false;
 
-  ButtonNavigator buttonNavigator;
+  std::string firmwarePath;
+  size_t firmwareSize = 0;
+  size_t writtenBytes = 0;
+  unsigned int lastRenderedPercent = 101;
+  std::string errorMessage;
 
-  void runScan();
-  void selectCandidate(int index);
-  void startInstall();
-  static void onInstallProgress(size_t processed, size_t total, void* ctx);
-
-  const char* basenameFromPath(const char* path) const;
-  const char* errorMessageFor(SdFirmwareUpdater::Error error) const;
+  void launchPicker();
+  void onPickerResult(const ActivityResult& result);
+  bool validateFirmware();
+  void promptConfirmation();
+  void onConfirmationResult(const ActivityResult& result);
+  void performUpdate();
 };

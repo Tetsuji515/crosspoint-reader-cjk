@@ -2,8 +2,9 @@
 
 #include <HalPowerManager.h>
 
+#include <algorithm>
+
 #include "OpdsServerStore.h"
-#include "OrientationHelper.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -37,10 +38,10 @@ void ActivityManager::renderTaskLoop() {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     // Acquire the lock before reading currentActivity to avoid a TOCTOU race
     // where the main task deletes the activity between the null-check and render().
-    RenderLock renderLock;
+    RenderLock lock;
     if (currentActivity) {
       HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
-      currentActivity->render(std::move(renderLock));
+      currentActivity->render(std::move(lock));
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
@@ -87,14 +88,6 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
-
-        // Apply screen+input orientation for the activity that's coming back
-        // to the foreground. Each activity decides via supportsLandscape()
-        // whether it wants the configured Landscape orientation or stays in
-        // Portrait/Inverted, so popping from a Portrait UI subactivity back
-        // to a Landscape reader correctly switches the rotation here.
-        OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
-
         // Handle result if necessary
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
@@ -136,13 +129,6 @@ void ActivityManager::loop() {
       currentActivity = std::move(pendingActivity);
 
       lock.unlock();  // onEnter may acquire its own lock
-      // Apply screen+input orientation BEFORE onEnter so the activity's
-      // onEnter / first render see the correct orientation. Each activity
-      // decides via supportsLandscape() whether to use the configured
-      // Landscape orientation or stay Portrait/Inverted; UI subactivities
-      // pushed from a Landscape reader therefore switch to Portrait, and
-      // popping back rotates the reader to its configured orientation.
-      OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
       currentActivity->onEnter();
 
       // onEnter may request another pending action, we will handle it in the next loop iteration
@@ -178,8 +164,6 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   } else {
     // No current activity, safe to launch immediately
     currentActivity = std::move(newActivity);
-    // Apply orientation before onEnter so the first render is rotated correctly.
-    OrientationHelper::applyOrientation(renderer, mappedInput, currentActivity.get());
     currentActivity->onEnter();
   }
 }
@@ -212,8 +196,8 @@ void ActivityManager::goToReader(std::string path) {
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path)));
 }
 
-void ActivityManager::goToSleep() {
-  replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput));
+void ActivityManager::goToSleep(bool fromTimeout) {
+  replaceActivity(std::make_unique<SleepActivity>(renderer, mappedInput, fromTimeout));
   loop();  // Important: sleep screen must be rendered immediately, the caller will go to sleep right after this returns
 }
 
@@ -223,9 +207,24 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
   replaceActivity(std::make_unique<FullScreenMessageActivity>(renderer, mappedInput, std::move(message), style));
 }
 
+void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
+  if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {
+    const auto& activityName = currentActivity->name;
+    if (activityName == "FileBrowser") {
+      initialMenuItem = HomeMenuItem::FILE_BROWSER;
+    } else if (activityName == "RecentBooks") {
+      initialMenuItem = HomeMenuItem::RECENTS;
+    } else if (activityName == "OpdsBookBrowser") {
+      initialMenuItem = HomeMenuItem::OPDS_BROWSER;
+    } else if (activityName == "CrossPointWebServer") {
+      initialMenuItem = HomeMenuItem::FILE_TRANSFER;
+    } else if (activityName == "Settings") {
+      initialMenuItem = HomeMenuItem::SETTINGS_MENU;
+    }
+  }
+  replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput, initialMenuItem));
+}
 void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
-
-void ActivityManager::goHome() { replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput)); }
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   if (pendingActivity) {
@@ -248,9 +247,20 @@ void ActivityManager::popActivity() {
 
 bool ActivityManager::preventAutoSleep() const { return currentActivity && currentActivity->preventAutoSleep(); }
 
-bool ActivityManager::isReaderActivity() const { return currentActivity && currentActivity->isReaderActivity(); }
+bool ActivityManager::isReaderActivity() const {
+  return std::any_of(stackActivities.begin(), stackActivities.end(),
+                     [](const auto& activity) { return activity->isReaderActivity(); }) ||
+         (currentActivity && currentActivity->isReaderActivity());
+}
 
 bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }
+
+ScreenshotInfo ActivityManager::getScreenshotInfo() const {
+  if (currentActivity) {
+    return currentActivity->getScreenshotInfo();
+  }
+  return {};
+}
 
 void ActivityManager::requestUpdate(bool immediate) {
   if (immediate) {

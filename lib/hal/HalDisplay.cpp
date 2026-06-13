@@ -10,7 +10,7 @@ HalDisplay::HalDisplay() : einkDisplay(EPD_SCLK, EPD_MOSI, EPD_CS, EPD_DC, EPD_R
 
 HalDisplay::~HalDisplay() {}
 
-void HalDisplay::begin() {
+void HalDisplay::begin(bool seamless) {
   // Set X3-specific panel mode before initializing.
   if (gpio.deviceIsX3()) {
     einkDisplay.setDisplayX3();
@@ -18,7 +18,14 @@ void HalDisplay::begin() {
 
   einkDisplay.begin();
 
-  // Request resync after specific wakeup events to ensure clean display state
+  if (seamless) {
+    // Defuse the SDK's X3 _x3InitialFullSyncsRemaining counter (no-op on X4)
+    // so the first paint isn't promoted to FULL (~770ms). Skips the wakeup-
+    // gated requestResync() below for the same reason.
+    einkDisplay.skipInitialResync();
+    return;
+  }
+  // Request resync after specific wakeup events to ensure clean display state.
   const auto wakeupReason = gpio.getWakeupReason();
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton || wakeupReason == HalGPIO::WakeupReason::AfterFlash ||
       wakeupReason == HalGPIO::WakeupReason::Other) {
@@ -44,8 +51,6 @@ EInkDisplay::RefreshMode convertRefreshMode(HalDisplay::RefreshMode mode) {
       return EInkDisplay::FULL_REFRESH;
     case HalDisplay::HALF_REFRESH:
       return EInkDisplay::HALF_REFRESH;
-    case HalDisplay::DARK_REDRIVE:
-      return EInkDisplay::DARK_REDRIVE;
     case HalDisplay::FAST_REFRESH:
     default:
       return EInkDisplay::FAST_REFRESH;
@@ -58,14 +63,6 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
   }
 
   einkDisplay.displayBuffer(convertRefreshMode(mode), turnOffScreen);
-}
-
-void HalDisplay::displayWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool turnOffScreen) {
-  einkDisplay.displayWindow(x, y, w, h, turnOffScreen);
-}
-
-void HalDisplay::displayWindowDarkRedrive(uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool turnOffScreen) {
-  einkDisplay.displayWindowDarkRedrive(x, y, w, h, turnOffScreen);
 }
 
 void HalDisplay::refreshDisplay(HalDisplay::RefreshMode mode, bool turnOffScreen) {
@@ -91,6 +88,13 @@ void HalDisplay::copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) { einkDisplay
 void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) { einkDisplay.cleanupGrayscaleBuffers(bwBuffer); }
 
 void HalDisplay::displayGrayBuffer(bool turnOffScreen) { einkDisplay.displayGrayBuffer(turnOffScreen); }
+
+void HalDisplay::writeGrayscalePlaneStrip(bool lsbPlane, const uint8_t* rows, uint16_t yStart, uint16_t numRows) {
+  einkDisplay.writeGrayscalePlaneStrip(lsbPlane ? EInkDisplay::GRAY_PLANE_LSB : EInkDisplay::GRAY_PLANE_MSB, rows,
+                                       yStart, numRows);
+}
+
+bool HalDisplay::supportsStripGrayscale() const { return einkDisplay.supportsStripGrayscale(); }
 
 uint16_t HalDisplay::getDisplayWidth() const { return einkDisplay.getDisplayWidth(); }
 

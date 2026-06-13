@@ -14,12 +14,16 @@ class HalDisplay {
   enum RefreshMode {
     FULL_REFRESH,  // Full refresh with complete waveform
     HALF_REFRESH,  // Half refresh (1720ms) - balanced quality and speed
-    FAST_REFRESH,  // Fast refresh using custom LUT
-    DARK_REDRIVE   // Fast refresh with inverted RED RAM to re-drive all pixels (dark mode ghosting fix)
+    FAST_REFRESH   // Fast refresh using custom LUT
   };
 
-  // Initialize the display hardware and driver
-  void begin();
+  // Pass seamless=true on any path where the panel already shows the
+  // content it should after begin() returns (silent reboot's popup,
+  // sleep-wake with a restored buffer). Skips the wakeup-gated
+  // requestResync() and defuses the SDK's X3 _x3InitialFullSyncsRemaining
+  // counter; otherwise the first two paints get promoted to FULL
+  // (~770ms each on X3).
+  void begin(bool seamless = false);
 
   // Display dimensions
   static constexpr uint16_t DISPLAY_WIDTH = EInkDisplay::DISPLAY_WIDTH;
@@ -35,8 +39,6 @@ class HalDisplay {
                             bool fromProgmem = false) const;
 
   void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
-  void displayWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool turnOffScreen = false);
-  void displayWindowDarkRedrive(uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool turnOffScreen = false);
   void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
 
   // Power management
@@ -51,6 +53,12 @@ class HalDisplay {
   void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
 
   void displayGrayBuffer(bool turnOffScreen = false);
+
+  // Tiled grayscale: stream one band of a plane (lsbPlane selects LSB/MSB RAM)
+  // straight to the controller; supportsStripGrayscale() gates the path. See
+  // EInkDisplay::writeGrayscalePlaneStrip.
+  void writeGrayscalePlaneStrip(bool lsbPlane, const uint8_t* rows, uint16_t yStart, uint16_t numRows);
+  bool supportsStripGrayscale() const;
 
   // Runtime geometry passthrough
   uint16_t getDisplayWidth() const;

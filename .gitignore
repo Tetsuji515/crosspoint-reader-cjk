@@ -13,15 +13,25 @@ build
 /compile_commands.json
 /.cache
 
+# Local planning / agent state
 docs/plans/
 docs/superpowers/
 memory/
 .spec-workflow/
 .serena/
-.skills/
-.claude/
 .history/
 /.venv
 *.local*
 worktrees/
 test/
+
+# Generated/downloaded font artifacts
+*.cpfont
+lib/EpdFont/scripts/downloaded_fonts/
+lib/EpdFont/scripts/instanced_fonts/
+lib/EpdFont/scripts/output/
+
+# Claude Code: share project skills with the team, keep local agent state out.
+.claude/*
+!.claude/skills/
+.skills/
