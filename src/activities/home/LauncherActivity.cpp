@@ -120,6 +120,18 @@ void LauncherActivity::maybeStartSilentNtpSync() {
   if (ntpState != NtpSyncState::Idle || isTimeSynced()) {
     return;
   }
+  // Bringing up the WiFi stack + SNTP costs tens of KB of heap on top of
+  // whatever's already resident (external reading font glyph cache/interval
+  // table in particular). Observed crash: min_free_heap dropped to ~3KB and
+  // a subsequent display buffer allocation threw std::bad_alloc when this
+  // fired with an external font loaded and free heap already around 50-80KB.
+  // Require a comfortable margin before attempting it at all.
+  constexpr uint32_t MIN_FREE_HEAP_FOR_NTP_SYNC = 100000;
+  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_NTP_SYNC) {
+    LOG_DBG("LNCH", "Skipping silent NTP sync, free heap too low (%d bytes)", ESP.getFreeHeap());
+    ntpState = NtpSyncState::Failed;
+    return;
+  }
   const std::string& ssid = WIFI_STORE.getLastConnectedSsid();
   if (ssid.empty()) {
     return;
