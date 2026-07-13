@@ -15,6 +15,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ClockSync.h"
+#include "util/MemLog.h"
 #include "util/RefreshCycle.h"
 
 namespace {
@@ -43,6 +44,7 @@ int wrapIndex(int idx, int count) {
 
 void LauncherActivity::onEnter() {
   Activity::onEnter();
+  MemLog::log("launcher_onEnter");
   selectorIndex = 0;
   listMovesUntilFullRefresh = LIST_REFRESH_CYCLE_N;
   lastRenderedMinute = -1;
@@ -50,7 +52,10 @@ void LauncherActivity::onEnter() {
   requestUpdate();
 }
 
-void LauncherActivity::onExit() { Activity::onExit(); }
+void LauncherActivity::onExit() {
+  MemLog::log("launcher_onExit");
+  Activity::onExit();
+}
 
 void LauncherActivity::loop() {
   buttonNavigator.onNext([this] {
@@ -109,6 +114,11 @@ void LauncherActivity::handleConfirm() {
 void LauncherActivity::handleBack() {
   // Quick-Resume-equivalent: jump back into the last-open book, if any.
   if (!APP_STATE.openEpubPath.empty()) {
+    // [MEM-INVESTIGATION] Smoking-gun log for hypothesis (e): if this fires
+    // right after returning from an app (Settings/FileTransfer exit on Back
+    // *press*, this launcher acts on Back *release*, so the single physical
+    // Back action bleeds through and re-opens the reader unintentionally).
+    LOG_INF("MEM", "launcher_handleBack_opens_reader,path=%s", APP_STATE.openEpubPath.c_str());
     activityManager.goToReader(APP_STATE.openEpubPath);
   }
 }
