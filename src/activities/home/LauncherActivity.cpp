@@ -47,12 +47,28 @@ void LauncherActivity::onEnter() {
   listMovesUntilFullRefresh = LIST_REFRESH_CYCLE_N;
   lastRenderedMinute = -1;
   pendingScope = RenderScope::Full;
+  skipNextButtonCheck = true;
   requestUpdate();
 }
 
 void LauncherActivity::onExit() { Activity::onExit(); }
 
 void LauncherActivity::loop() {
+  // Skip button processing until a Back/Confirm press-release that started
+  // before this launcher was entered has fully cleared. Prevents an app's
+  // exit-on-Back-press from bleeding its Back release into handleBack() here
+  // and re-opening the last book. Mirrors EpubReaderActivity::loop().
+  if (skipNextButtonCheck) {
+    const bool confirmCleared = !mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+                                !mappedInput.wasReleased(MappedInputManager::Button::Confirm);
+    const bool backCleared = !mappedInput.isPressed(MappedInputManager::Button::Back) &&
+                             !mappedInput.wasReleased(MappedInputManager::Button::Back);
+    if (confirmCleared && backCleared) {
+      skipNextButtonCheck = false;
+    }
+    return;
+  }
+
   buttonNavigator.onNext([this] {
     selectorIndex = ButtonNavigator::nextIndex(selectorIndex, APP_REGISTRY_COUNT);
     pendingScope = RenderScope::ListOnly;

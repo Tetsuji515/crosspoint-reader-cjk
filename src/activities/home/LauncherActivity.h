@@ -25,6 +25,14 @@ class LauncherActivity final : public Activity {
   // docs/dev-notes/clock-sync-survey.md (judgment Y).
   int lastRenderedMinute = -1;
 
+  // Ignore button events until Back/Confirm are fully released after entering.
+  // Apps like Settings/FileTransfer exit on Back *press*, so the matching Back
+  // *release* would otherwise bleed through into this freshly-created launcher
+  // and immediately trigger handleBack() (re-opening the last book), which was
+  // the confirmed cause of a low-memory crash on home return. Mirrors the same
+  // guard EpubReaderActivity uses. See docs/dev-notes/mem-investigation.md.
+  bool skipNextButtonCheck = true;
+
   void handleConfirm();
   void handleBack();
   Rect computeClockRect() const;
