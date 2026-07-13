@@ -34,7 +34,6 @@ class LauncherActivity final : public Activity {
   bool skipNextButtonCheck = true;
 
   void handleConfirm();
-  void handleBack();
   Rect computeClockRect() const;
   Rect computeListRect() const;
   void renderClockArea() const;

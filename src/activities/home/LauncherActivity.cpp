@@ -91,9 +91,9 @@ void LauncherActivity::loop() {
     handleConfirm();
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    handleBack();
-  }
+  // Back is intentionally a no-op here: the launcher is the home/root screen,
+  // so there is nowhere to go back to. (It used to reopen the last book, but
+  // that surprised users returning from apps -- see docs/dev-notes/mem-investigation.md.)
 
   struct tm tmNow{};
   const time_t now = time(nullptr);
@@ -119,13 +119,6 @@ void LauncherActivity::handleConfirm() {
     toastShownAtMs = millis();
     pendingScope = RenderScope::Full;
     requestUpdate();
-  }
-}
-
-void LauncherActivity::handleBack() {
-  // Quick-Resume-equivalent: jump back into the last-open book, if any.
-  if (!APP_STATE.openEpubPath.empty()) {
-    activityManager.goToReader(APP_STATE.openEpubPath);
   }
 }
 
