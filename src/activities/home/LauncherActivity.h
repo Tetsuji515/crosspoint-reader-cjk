@@ -20,22 +20,13 @@ class LauncherActivity final : public Activity {
   enum class RenderScope { Full, ListOnly, ClockOnly };
   RenderScope pendingScope = RenderScope::Full;
 
-  // Clock area: minute-boundary partial refresh.
+  // Clock area: minute-boundary partial refresh. Time source is ClockSync
+  // (src/util/ClockSync.h) -- the launcher never connects to WiFi itself; see
+  // docs/dev-notes/clock-sync-survey.md (judgment Y).
   int lastRenderedMinute = -1;
-
-  // Silent NTP sync (A-6): only attempted if the clock looks unsynced and a
-  // previously-saved WiFi network is available. No FreeRTOS task -- follows the
-  // same fire-and-poll pattern as WifiSelectionActivity (WiFi.begin() then poll
-  // WiFi.status() from loop()).
-  enum class NtpSyncState { Idle, Connecting, Done, Failed };
-  NtpSyncState ntpState = NtpSyncState::Idle;
-  unsigned long wifiAttemptStartMs = 0;
-  static constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 9000;
 
   void handleConfirm();
   void handleBack();
-  void maybeStartSilentNtpSync();
-  void pollSilentNtpSync();
   Rect computeClockRect() const;
   Rect computeListRect() const;
   void renderClockArea() const;

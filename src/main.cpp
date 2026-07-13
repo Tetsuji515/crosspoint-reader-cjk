@@ -29,6 +29,7 @@
 #include "fontIds.h"
 #include "input/BluetoothPageTurnManager.h"
 #include "util/ButtonNavigator.h"
+#include "util/ClockSync.h"
 #include "util/ScreenshotUtil.h"
 
 extern HalDisplay display;
@@ -188,6 +189,7 @@ void enterDeepSleep() {
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
   APP_STATE.saveToFile();
+  ClockSync::saveCurrentTimeToDisk();
 
   activityManager.goToSleep();
 
@@ -305,6 +307,7 @@ void setup() {
 
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  ClockSync::restoreApproximateTimeFromDisk();
 
   if (HalSystem::isRebootFromPanic()) {
     // If we rebooted from a panic, go to crash report screen to show the panic info

@@ -2,7 +2,6 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
-#include <WiFi.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -12,11 +11,10 @@
 #include "AppRegistry.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
-#include "WifiCredentialStore.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "util/NtpSync.h"
+#include "util/ClockSync.h"
 #include "util/RefreshCycle.h"
 
 namespace {
@@ -41,17 +39,6 @@ int wrapIndex(int idx, int count) {
   if (idx < 0) idx += count;
   return idx;
 }
-
-// 2020-01-01T00:00:00Z. Below this, the ESP32's system clock is treated as
-// never having been set (there is no battery-backed RTC on this hardware).
-constexpr time_t UNSYNCED_EPOCH_THRESHOLD = 1577836800;
-
-// The firmware has no timezone concept anywhere (NTP sets the system clock to
-// UTC and nothing ever converts it for display). Fixed JST offset until a
-// proper timezone setting exists.
-constexpr time_t JST_OFFSET_SECONDS = 9 * 3600;
-
-bool isTimeSynced() { return time(nullptr) >= UNSYNCED_EPOCH_THRESHOLD; }
 }  // namespace
 
 void LauncherActivity::onEnter() {
@@ -60,17 +47,10 @@ void LauncherActivity::onEnter() {
   listMovesUntilFullRefresh = LIST_REFRESH_CYCLE_N;
   lastRenderedMinute = -1;
   pendingScope = RenderScope::Full;
-  maybeStartSilentNtpSync();
   requestUpdate();
 }
 
-void LauncherActivity::onExit() {
-  if (ntpState == NtpSyncState::Connecting) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-  }
-  Activity::onExit();
-}
+void LauncherActivity::onExit() { Activity::onExit(); }
 
 void LauncherActivity::loop() {
   buttonNavigator.onNext([this] {
@@ -99,8 +79,6 @@ void LauncherActivity::loop() {
     handleBack();
   }
 
-  pollSilentNtpSync();
-
   struct tm tmNow{};
   const time_t now = time(nullptr);
   localtime_r(&now, &tmNow);
@@ -113,56 +91,6 @@ void LauncherActivity::loop() {
       pendingScope = RenderScope::ClockOnly;
     }
     requestUpdate();
-  }
-}
-
-void LauncherActivity::maybeStartSilentNtpSync() {
-  if (ntpState != NtpSyncState::Idle || isTimeSynced()) {
-    return;
-  }
-  // Bringing up the WiFi stack + SNTP costs tens of KB of heap on top of
-  // whatever's already resident (external reading font glyph cache/interval
-  // table in particular). Observed crash: min_free_heap dropped to ~3KB and
-  // a subsequent display buffer allocation threw std::bad_alloc when this
-  // fired with an external font loaded and free heap already around 50-80KB.
-  // Require a comfortable margin before attempting it at all.
-  constexpr uint32_t MIN_FREE_HEAP_FOR_NTP_SYNC = 100000;
-  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_NTP_SYNC) {
-    LOG_DBG("LNCH", "Skipping silent NTP sync, free heap too low (%d bytes)", ESP.getFreeHeap());
-    ntpState = NtpSyncState::Failed;
-    return;
-  }
-  const std::string& ssid = WIFI_STORE.getLastConnectedSsid();
-  if (ssid.empty()) {
-    return;
-  }
-  const WifiCredential* credential = WIFI_STORE.findCredential(ssid);
-  if (!credential) {
-    return;
-  }
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(credential->ssid.c_str(), credential->password.c_str());
-  ntpState = NtpSyncState::Connecting;
-  wifiAttemptStartMs = millis();
-}
-
-void LauncherActivity::pollSilentNtpSync() {
-  if (ntpState != NtpSyncState::Connecting) {
-    return;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    syncTimeWithNTP();
-    WiFi.disconnect(false);
-    delay(100);
-    WiFi.mode(WIFI_OFF);
-    ntpState = isTimeSynced() ? NtpSyncState::Done : NtpSyncState::Failed;
-    pendingScope = RenderScope::ClockOnly;
-    requestUpdate();
-  } else if (millis() - wifiAttemptStartMs > WIFI_CONNECT_TIMEOUT_MS) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    ntpState = NtpSyncState::Failed;
   }
 }
 
@@ -210,9 +138,9 @@ void LauncherActivity::renderClockArea() const {
 
   char timeStr[8];
   char dateStr[32];
-  if (isTimeSynced()) {
+  if (ClockSync::isTimeSynced()) {
     struct tm tmNow{};
-    const time_t localNow = time(nullptr) + JST_OFFSET_SECONDS;
+    const time_t localNow = time(nullptr) + ClockSync::TZ_OFFSET_MINUTES * 60;
     gmtime_r(&localNow, &tmNow);
     snprintf(timeStr, sizeof(timeStr), "%02d:%02d", tmNow.tm_hour, tmNow.tm_min);
     strftime(dateStr, sizeof(dateStr), "%Y-%m-%d (%a)", &tmNow);
