@@ -181,6 +181,18 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  // Back returns to the home launcher, but only once any Back press that
+  // predates this activity has fully cleared (see skipBackUntilClear).
+  if (skipBackUntilClear) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Back) &&
+        !mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      skipBackUntilClear = false;
+    }
+  } else if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    activityManager.goHome();
+    return;
+  }
+
   const int menuCount = getMenuItemCount();
 
   buttonNavigator.onNext([this, menuCount] {
@@ -252,7 +264,7 @@ void HomeActivity::render(RenderLock&&) {
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
 
-  const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_HOME), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   if (renderer.isDarkMode()) {

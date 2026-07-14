@@ -34,7 +34,9 @@ void OpdsServerListActivity::onExit() { Activity::onExit(); }
 void OpdsServerListActivity::loop() {
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     if (pickerMode) {
-      activityManager.goHome();
+      // Picker mode is entered from the bookshelf's OPDS menu entry, so Back
+      // returns to the bookshelf rather than the launcher.
+      onGoHome();
     } else {
       finish();
     }
