@@ -25,3 +25,9 @@ memory/
 *.local*
 worktrees/
 test/
+
+# Reading-font generation assets: downloaded source TTF/OTF and generated
+# .epdf/.epdfont binaries. Not committed (large binaries); see
+# docs/dev-notes/reading-font-format-survey.md and scripts/font/README.md for
+# how to reproduce them.
+scripts/font/assets/
