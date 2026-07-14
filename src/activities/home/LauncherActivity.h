@@ -2,11 +2,22 @@
 
 #include "../Activity.h"
 #include "components/themes/BaseTheme.h"  // for Rect
+#include "fontIds.h"
 #include "util/ButtonNavigator.h"
 
 class LauncherActivity final : public Activity {
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
+
+  // Single UI font size used for every glyph in the launcher (see the tracked-
+  // text helpers in the .cpp). UI fonts are never rerouted to the external
+  // reader font, so ASCII renders predictably at one consistent size.
+  static constexpr int LAUNCHER_FONT_ID = UI_12_FONT_ID;
+
+  // Height reserved at the top for the header: wordmark + battery row plus the
+  // bezel with the month calendar. Just over 1/3 of the 800px portrait screen
+  // so 12pt day digits get non-overlapping week rows; the rest is the list.
+  static constexpr int HEADER_HEIGHT = 300;
 
   // Ghosting mitigation for list-area partial updates. See src/util/RefreshCycle.h.
   static constexpr int LIST_REFRESH_CYCLE_N = 10;
@@ -17,13 +28,8 @@ class LauncherActivity final : public Activity {
   unsigned long toastShownAtMs = 0;
   static constexpr unsigned long TOAST_DURATION_MS = 1500;
 
-  enum class RenderScope { Full, ListOnly, ClockOnly };
+  enum class RenderScope { Full, ListOnly };
   RenderScope pendingScope = RenderScope::Full;
-
-  // Clock area: minute-boundary partial refresh. Time source is ClockSync
-  // (src/util/ClockSync.h) -- the launcher never connects to WiFi itself; see
-  // docs/dev-notes/clock-sync-survey.md (judgment Y).
-  int lastRenderedMinute = -1;
 
   // Ignore button events until Back/Confirm are fully released after entering.
   // Apps like Settings/FileTransfer exit on Back *press*, so the matching Back
@@ -34,9 +40,8 @@ class LauncherActivity final : public Activity {
   bool skipNextButtonCheck = true;
 
   void handleConfirm();
-  Rect computeClockRect() const;
   Rect computeListRect() const;
-  void renderClockArea() const;
+  void renderHeader() const;
   void renderListArea() const;
   void renderToast() const;
 
