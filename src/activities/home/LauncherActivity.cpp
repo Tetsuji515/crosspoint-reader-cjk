@@ -16,6 +16,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ClockSync.h"
+#include "util/MemLog.h"
 #include "util/RefreshCycle.h"
 
 namespace {
@@ -58,6 +59,7 @@ constexpr int daysInMonth(int year, int month1to12) {
 
 void LauncherActivity::onEnter() {
   Activity::onEnter();
+  MemLog::log("launcher_onEnter");
   selectorIndex = 0;
   listMovesUntilFullRefresh = LIST_REFRESH_CYCLE_N;
   pendingScope = RenderScope::Full;
@@ -65,7 +67,10 @@ void LauncherActivity::onEnter() {
   requestUpdate();
 }
 
-void LauncherActivity::onExit() { Activity::onExit(); }
+void LauncherActivity::onExit() {
+  MemLog::log("launcher_onExit");
+  Activity::onExit();
+}
 
 void LauncherActivity::loop() {
   // Skip button processing until a Back/Confirm press-release that started

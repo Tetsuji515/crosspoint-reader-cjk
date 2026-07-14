@@ -33,6 +33,7 @@
 #include "activities/settings/StatusBarSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/MemLog.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
@@ -59,6 +60,7 @@ uint16_t clampDurationMs(const unsigned long duration) {
 
 void EpubReaderActivity::onEnter() {
   Activity::onEnter();
+  MemLog::log("epubreader_onEnter");
 
   if (!epub) {
     return;
@@ -104,6 +106,7 @@ void EpubReaderActivity::onEnter() {
 }
 
 void EpubReaderActivity::onExit() {
+  MemLog::log("epubreader_onExit");
   Activity::onExit();
 
   // ActivityManager applies the next activity's orientation on Pop/Replace,
@@ -646,6 +649,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
                    loadMs);
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     renderer.getFontCacheManager()->clearCache();
+    MemLog::log("epubreader_page_rendered");
     sectionLoadRetryCount = 0;
   }
   saveProgress(currentSpineIndex, section->currentPage, section->pageCount);

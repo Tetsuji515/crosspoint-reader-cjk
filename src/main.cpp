@@ -30,6 +30,7 @@
 #include "input/BluetoothPageTurnManager.h"
 #include "util/ButtonNavigator.h"
 #include "util/ClockSync.h"
+#include "util/MemLog.h"
 #include "util/ScreenshotUtil.h"
 
 extern HalDisplay display;
@@ -328,6 +329,8 @@ void setup() {
 
   // Ensure we're not still holding the power button before leaving setup
   waitForPowerRelease();
+
+  MemLog::log("boot_end");
 }
 
 void loop() {
