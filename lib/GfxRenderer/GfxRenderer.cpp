@@ -6,6 +6,7 @@
 #include <FontManager.h>
 #include <Logging.h>
 #include <Utf8.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
 
@@ -1465,11 +1466,27 @@ void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const
   const bool hasPartialUpdate = partialW_ > 0 && partialH_ > 0;
   if (hasPartialUpdate) {
     PhysicalRect physicalWindow;
-    const bool hasPhysicalWindow =
+    bool hasPhysicalWindow =
         refreshMode == HalDisplay::FAST_REFRESH &&
         logicalRectToPhysicalWindow(orientation, partialX_, partialY_, partialW_, partialH_, getScreenWidth(),
                                     getScreenHeight(), panelWidth, panelHeight, &physicalWindow);
     partialX_ = partialY_ = partialW_ = partialH_ = 0;
+    if (hasPhysicalWindow) {
+      // EInkDisplay::displayWindow() allocates a temporary (width/8 * height)-byte
+      // buffer. After heap-hungry activities (e.g. the file-transfer web server)
+      // the heap can be fragmented enough that this contiguous allocation fails
+      // with std::bad_alloc mid-render. Fall back to a full-screen refresh (which
+      // reuses the existing framebuffer, no large temp allocation) when the
+      // largest free block can't comfortably satisfy it. See
+      // docs/dev-notes/mem-investigation.md.
+      const size_t windowBufferSize = static_cast<size_t>(physicalWindow.width / 8) * physicalWindow.height;
+      constexpr size_t kWindowAllocHeadroom = 4096;
+      if (heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) < windowBufferSize + kWindowAllocHeadroom) {
+        LOG_DBG("GFX", "Partial-update buffer (%u B) exceeds largest free block; full-refresh fallback",
+                static_cast<uint32_t>(windowBufferSize));
+        hasPhysicalWindow = false;
+      }
+    }
     if (hasPhysicalWindow) {
       if (darkMode) {
         display.displayWindowDarkRedrive(physicalWindow.x, physicalWindow.y, physicalWindow.width,

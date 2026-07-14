@@ -12,6 +12,7 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/ClockSync.h"
 
 void WifiSelectionActivity::onEnter() {
   Activity::onEnter();
@@ -253,6 +254,15 @@ void WifiSelectionActivity::checkConnectionStatus() {
     {
       RenderLock lock;
       WIFI_STORE.setLastConnectedSsid(selectedSSID);
+    }
+
+    // Piggyback an NTP time sync onto any successful WiFi connection, rather
+    // than ever connecting just for the clock (see
+    // docs/dev-notes/clock-sync-survey.md, judgment Y). Blocking (~5s max),
+    // same cost class as the existing KOReaderSync WiFi flow.
+    {
+      RenderLock lock;
+      ClockSync::syncAndPersist();
     }
 
     // If we entered a new password, ask if user wants to save it

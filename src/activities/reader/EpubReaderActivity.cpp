@@ -128,10 +128,12 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  // Handle pending go home (e.g. from menu GO_HOME action)
+  // Handle pending go home (e.g. from menu GO_HOME action). Must be the
+  // base-class call: unqualified onGoHome() resolves to this class's menu
+  // handler, which just re-sets pendingGoHome and would loop forever.
   if (pendingGoHome) {
     pendingGoHome = false;
-    onGoHome();
+    Activity::onGoHome();
     return;
   }
 
@@ -141,15 +143,15 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  // Long press BACK (1s+) goes to file selection
+  // Long press BACK (1s+) goes to file selection, like the TXT/XTC readers.
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs) {
-    onGoHome();
+    activityManager.goToFileBrowser(epub ? epub->getPath() : "");
     return;
   }
 
-  // Short press BACK goes directly to home
+  // Short press BACK goes back to the bookshelf.
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
-    activityManager.goHome();
+    Activity::onGoHome();
     return;
   }
 

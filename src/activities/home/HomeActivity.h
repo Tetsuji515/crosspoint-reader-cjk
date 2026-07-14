@@ -21,6 +21,13 @@ class HomeActivity final : public Activity {
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
   std::vector<RecentBook> recentBooks;
 
+  // Ignore Back until any press-release that started before this activity was
+  // entered has fully cleared. Some activities (e.g. the reader) exit on Back
+  // *press*, and the matching release would otherwise bleed into the Back
+  // handler here and immediately bounce to the launcher. Mirrors the guard in
+  // LauncherActivity::loop().
+  bool skipBackUntilClear = true;
+
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image
   bool restoreCoverBuffer();  // Restore frame buffer from stored cover

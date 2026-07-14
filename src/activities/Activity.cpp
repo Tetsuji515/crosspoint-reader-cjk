@@ -10,7 +10,11 @@ void Activity::requestUpdate(bool immediate) { activityManager.requestUpdate(imm
 
 void Activity::requestUpdateAndWait() { activityManager.requestUpdateAndWait(); }
 
-void Activity::onGoHome() { activityManager.goHome(); }
+// "Home" for reading-flow activities (file browser, recents, OPDS, readers) is
+// the bookshelf -- the LIBRARY app's root screen. The launcher sits one more
+// Back above it (HomeActivity's Back handler calls goHome()). Activities that
+// should exit straight to the launcher call activityManager.goHome() directly.
+void Activity::onGoHome() { activityManager.goToBookshelf(); }
 
 void Activity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
 
